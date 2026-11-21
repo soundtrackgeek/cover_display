@@ -281,21 +281,38 @@ where
     }
 }
 
-fn order_tracks(mut tracks: Vec<TrackInfo>, order: &TrackOrder) -> Vec<TrackInfo> {
-    match order {
-        TrackOrder::Sequential => tracks,
+fn single_priority(t: &TrackInfo) -> u8 {
+    if !t.is_single {
+        return 3;
+    }
+    match t.single_confidence.as_deref() {
+        Some("confirmed") => 0,
+        Some("chart") => 1,
+        _ => 2, // "possible"
+    }
+}
+
+pub fn order_tracks(mut tracks: Vec<TrackInfo>, order: &TrackOrder, singles_first: bool) -> Vec<TrackInfo> {
+    let apply_base_order = |list: &mut Vec<TrackInfo>| match order {
+        TrackOrder::Sequential => {
+            list.sort_by(|a, b| {
+                a.disc_number
+                    .cmp(&b.disc_number)
+                    .then_with(|| a.track_number.cmp(&b.track_number))
+                    .then_with(|| a.id.cmp(&b.id))
+            });
+        }
         TrackOrder::LovedFirst => {
-            tracks.sort_by(|a, b| {
+            list.sort_by(|a, b| {
                 b.loved
                     .cmp(&a.loved)
                     .then_with(|| b.rating.unwrap_or(0).cmp(&a.rating.unwrap_or(0)))
                     .then_with(|| a.disc_number.cmp(&b.disc_number))
                     .then_with(|| a.track_number.cmp(&b.track_number))
             });
-            tracks
         }
         TrackOrder::RatedFirst => {
-            tracks.sort_by(|a, b| {
+            list.sort_by(|a, b| {
                 b.rating
                     .unwrap_or(-1)
                     .cmp(&a.rating.unwrap_or(-1))
@@ -303,14 +320,28 @@ fn order_tracks(mut tracks: Vec<TrackInfo>, order: &TrackOrder) -> Vec<TrackInfo
                     .then_with(|| a.disc_number.cmp(&b.disc_number))
                     .then_with(|| a.track_number.cmp(&b.track_number))
             });
-            tracks
         }
         TrackOrder::Shuffle => {
             let mut rng = rand::thread_rng();
-            tracks.shuffle(&mut rng);
-            tracks
+            list.shuffle(&mut rng);
         }
+    };
+
+    if !singles_first {
+        apply_base_order(&mut tracks);
+        return tracks;
     }
+
+    let (mut singles, mut rest): (Vec<TrackInfo>, Vec<TrackInfo>) =
+        tracks.into_iter().partition(|t| t.is_single);
+
+    apply_base_order(&mut singles);
+    // Keep confirmed/chart singles ahead of 'possible' matches while preserving relative order
+    singles.sort_by_key(single_priority);
+    apply_base_order(&mut rest);
+
+    singles.extend(rest);
+    singles
 }
 
 fn loudness_gain(loudness_db: Option<f32>, normalize: bool) -> f32 {
@@ -474,12 +505,11 @@ fn audio_actor_loop(app: AppHandle, rx: Receiver<AudioCommand>, mut settings: Ap
                 } => {
                     settings = new_cfg;
                     state.volume = settings.volume;
-                    let ordered = order_tracks(tracks, &settings.track_order);
                     state.album_id = Some(album.id);
                     state.album_title = album.album;
                     state.album_artist = album.artist;
                     state.album_year = album.year;
-                    state.tracks = ordered;
+                    state.tracks = tracks;
                     state.total_tracks = state.tracks.len();
                     state.is_pinned = is_pinned;
                     state.source_view = source_view;
@@ -591,6 +621,8 @@ fn audio_actor_loop(app: AppHandle, rx: Receiver<AudioCommand>, mut settings: Ap
                     emit_state(&state);
                 }
                 AudioCommand::UpdateSettings(new_cfg) => {
+                    let order_changed = settings.singles_first != new_cfg.singles_first
+                        || settings.track_order != new_cfg.track_order;
                     let mode_changed = settings.preview_mode != new_cfg.preview_mode
                         || settings.clip_duration_sec != new_cfg.clip_duration_sec
                         || settings.preview_percentage != new_cfg.preview_percentage
@@ -600,6 +632,16 @@ fn audio_actor_loop(app: AppHandle, rx: Receiver<AudioCommand>, mut settings: Ap
                     state.volume = settings.volume;
                     if let Some(ref s) = sink {
                         s.set_volume(state.volume);
+                    }
+                    if order_changed && !state.tracks.is_empty() {
+                        let current_track_id = state.track.as_ref().map(|t| t.id);
+                        let raw = std::mem::take(&mut state.tracks);
+                        state.tracks = order_tracks(raw, &settings.track_order, settings.singles_first);
+                        if let Some(cid) = current_track_id {
+                            if let Some(pos) = state.tracks.iter().position(|t| t.id == cid) {
+                                state.track_index = pos;
+                            }
+                        }
                     }
                     if mode_changed && state.status == "playing" && !state.tracks.is_empty() {
                         let idx = state.track_index;

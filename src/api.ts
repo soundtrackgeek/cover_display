@@ -35,6 +35,7 @@ export const api = {
     albumId: string,
     opts?: {
       startTrackIndex?: number;
+      startTrackId?: number;
       isPinned?: boolean;
       sourceView?: "coverflow" | "wall";
     }
@@ -42,6 +43,7 @@ export const api = {
     invoke<void>("preview_album", {
       albumId,
       startTrackIndex: opts?.startTrackIndex ?? 0,
+      startTrackId: opts?.startTrackId ?? null,
       isPinned: opts?.isPinned ?? false,
       sourceView: opts?.sourceView ?? "coverflow",
     }),

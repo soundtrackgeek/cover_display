@@ -5,6 +5,14 @@ All notable changes to Cover Display will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-11-21
+
+### Added
+- **Play Singles First** mode powered by MusicBrainz `track_singles` and single chart metadata in `music-library.sqlite3` (including remaster/edition suffix fallback matching).
+- Quick **Singles 1st** toggle pill in the bottom player bar and corresponding option in **Settings → Preview & Audio** (enabled by default).
+- Visual `SINGLE` badges and tooltips in the Cover Flow track strip, active player track header, and expandable album tracklist drawer.
+- Exact track-ID targeting when clicking any track in Cover Flow so clicked tracks always start accurately regardless of track order or Singles-first grouping.
+
 ## [0.1.0] - 2026-11-21
 
 ### Added

@@ -18,6 +18,7 @@ A fast, studio-grade desktop music library cover browser and audio preview playe
   - Native Rust (`rodio` + `symphonia`) audio engine with zero browser autoplay restrictions, ReplayGain-style loudness normalization, and smooth fade-in/out.
   - **Smart Highlight (BLISS Timelines + CLAP)**: Combines 1-second chroma/MFCC chorus-repetition detection and loudness peaks from `music-timelines.sqlite3` with representative windows from `music-clap.sqlite3` to jump straight to each song's strongest section.
   - **CLAP Best Window**, **Start**, **Middle**, **Custom Percentage**, and **Fixed Offset** (`0:30`, `1:00`, `1:30`, `2:00`, or any custom timestamp).
+  - **Play Singles First (MusicBrainz + Charts)**: Prioritizes each album's MusicBrainz `track_singles` and charted single tracks ahead of the rest of the album (with quick toggle in the player bar, Settings control, and `SINGLE` badges in tracklists).
   - Interactive **64-bar Energy Timeline Waveform** in the bottom player dock showing the active clip window and CLAP anchor markers—click anywhere to scrub.
 - **Sonic Similarity ("Similar Vibe")**
   - Uses `music-analysis.sqlite3` (23-dimensional BLISS sonic descriptors) to build a compact cached album centroid index and find sonically similar albums across the entire library in milliseconds.

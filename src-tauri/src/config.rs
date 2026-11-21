@@ -93,6 +93,8 @@ pub struct AppSettings {
     #[serde(default)]
     pub track_order: TrackOrder,
     #[serde(default = "default_true")]
+    pub singles_first: bool,
+    #[serde(default = "default_true")]
     pub normalize_loudness: bool,
     #[serde(default = "default_volume")]
     pub volume: f32,
@@ -163,6 +165,7 @@ impl Default for AppSettings {
             preview_percentage: default_preview_percentage(),
             preview_fixed_offset_sec: default_fixed_offset(),
             track_order: TrackOrder::Sequential,
+            singles_first: true,
             normalize_loudness: true,
             volume: default_volume(),
             hover_delay_ms: default_hover_delay(),

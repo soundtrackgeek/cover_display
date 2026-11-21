@@ -52,6 +52,9 @@ pub struct TrackInfo {
     pub billboard_single_rank: Option<i32>,
     pub official_uk_rank: Option<i32>,
     pub vg_lista_rank: Option<i32>,
+    pub is_single: bool,
+    pub single_confidence: Option<String>,
+    pub single_year: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -750,6 +753,41 @@ impl Catalog {
     }
 }
 
+fn normalize_key(input: &str) -> String {
+    input
+        .trim()
+        .replace(['\u{2010}', '\u{2011}', '\u{2012}', '\u{2013}', '\u{2014}', '\u{2212}'], "-")
+        .to_lowercase()
+}
+
+/// Strips trailing remaster / version parentheticals like "(2014 Remaster)" or "[Remastered]"
+/// so remastered album editions still match MusicBrainz single titles.
+fn strip_edition_suffix(title_key: &str) -> Option<String> {
+    let trimmed = title_key.trim();
+    for (open, close) in [('(', ')'), ('[', ']')] {
+        if let Some(end) = trimmed.strip_suffix(close) {
+            if let Some(pos) = end.rfind(open) {
+                let inside = &end[pos + 1..];
+                if inside.contains("remaster")
+                    || inside.contains("version")
+                    || inside.contains("mix")
+                    || inside.contains("edit")
+                    || inside.contains("mono")
+                    || inside.contains("stereo")
+                    || inside.contains("deluxe")
+                    || inside.contains("bonus")
+                {
+                    let base = end[..pos].trim();
+                    if !base.is_empty() {
+                        return Some(base.to_string());
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
 pub fn get_album_tracks(library_dir: &str, album_id: &str) -> Result<Vec<TrackInfo>, String> {
     let conn = open_readonly_db(&db_path(library_dir, "music-library.sqlite3"))?;
     let mut stmt = conn
@@ -761,6 +799,8 @@ pub fn get_album_tracks(library_dir: &str, album_id: &str) -> Result<Vec<TrackIn
                 COALESCE(track_number, 0),
                 COALESCE(title, ''),
                 COALESCE(display_artist, album_artist_display, ''),
+                COALESCE(album_artist_display, ''),
+                COALESCE(artist_identity_key, ''),
                 COALESCE(time_seconds, 0),
                 normalized_rating,
                 COALESCE(love, ''),
@@ -768,43 +808,127 @@ pub fn get_album_tracks(library_dir: &str, album_id: &str) -> Result<Vec<TrackIn
                 COALESCE(filename, ''),
                 billboard_single_rank,
                 official_uk_rank,
-                vg_lista_rank
+                vg_lista_rank,
+                ti_i_skuddet_rank,
+                norsktoppen_rank
             FROM tracks
             WHERE album_id = ?1
             ORDER BY COALESCE(disc_number, 1) ASC, COALESCE(track_number, 0) ASC, id ASC",
         )
         .map_err(|e| format!("Failed to prepare tracks query: {e}"))?;
 
+    struct RawTrack {
+        info: TrackInfo,
+        album_artist: String,
+        artist_identity_key: String,
+        has_extra_chart: bool,
+    }
+
     let rows = stmt
         .query_map([album_id], |r| {
-            let love_str: String = r.get(8)?;
+            let love_str: String = r.get(10)?;
             let loved = !love_str.trim().is_empty()
                 && love_str.trim() != "0"
                 && !love_str.eq_ignore_ascii_case("false");
-            Ok(TrackInfo {
-                id: r.get(0)?,
-                album_id: r.get(1)?,
-                disc_number: r.get(2)?,
-                track_number: r.get(3)?,
-                title: r.get(4)?,
-                artist: r.get(5)?,
-                time_seconds: r.get(6)?,
-                rating: r.get(7)?,
-                loved,
-                file_path: r.get(9)?,
-                filename: r.get(10)?,
-                billboard_single_rank: r.get(11)?,
-                official_uk_rank: r.get(12)?,
-                vg_lista_rank: r.get(13)?,
+            let ti_rank: Option<i32> = r.get(16)?;
+            let norsk_rank: Option<i32> = r.get(17)?;
+            Ok(RawTrack {
+                info: TrackInfo {
+                    id: r.get(0)?,
+                    album_id: r.get(1)?,
+                    disc_number: r.get(2)?,
+                    track_number: r.get(3)?,
+                    title: r.get(4)?,
+                    artist: r.get(5)?,
+                    time_seconds: r.get(8)?,
+                    rating: r.get(9)?,
+                    loved,
+                    file_path: r.get(11)?,
+                    filename: r.get(12)?,
+                    billboard_single_rank: r.get(13)?,
+                    official_uk_rank: r.get(14)?,
+                    vg_lista_rank: r.get(15)?,
+                    is_single: false,
+                    single_confidence: None,
+                    single_year: None,
+                },
+                album_artist: r.get(6)?,
+                artist_identity_key: r.get(7)?,
+                has_extra_chart: ti_rank.is_some() || norsk_rank.is_some(),
             })
         })
         .map_err(|e| format!("Failed to fetch tracks: {e}"))?;
 
-    let mut out = Vec::new();
-    for row in rows {
-        if let Ok(t) = row {
-            out.push(t);
+    let mut raw_tracks = Vec::new();
+    let mut artist_keys: Vec<String> = Vec::new();
+    for row in rows.flatten() {
+        for cand in [
+            normalize_key(&row.artist_identity_key),
+            normalize_key(&row.info.artist),
+            normalize_key(&row.album_artist),
+        ] {
+            if !cand.is_empty() && !artist_keys.contains(&cand) {
+                artist_keys.push(cand);
+            }
+        }
+        raw_tracks.push(row);
+    }
+
+    // Lookup MusicBrainz singles for all candidate artist keys on this album
+    let mut mb_singles: HashMap<String, (String, Option<i32>)> = HashMap::new();
+    if !artist_keys.is_empty() {
+        if let Ok(mut s_stmt) = conn.prepare(
+            "SELECT track_key, confidence, single_year FROM track_singles WHERE artist_key = ?1",
+        ) {
+            for akey in &artist_keys {
+                if let Ok(srows) = s_stmt.query_map([akey], |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, Option<i32>>(2)?,
+                    ))
+                }) {
+                    for (tkey, conf, syear) in srows.flatten() {
+                        let norm_tk = normalize_key(&tkey);
+                        // Prefer 'confirmed' over 'possible'
+                        let replace = match mb_singles.get(&norm_tk) {
+                            None => true,
+                            Some((existing_conf, _)) => {
+                                existing_conf != "confirmed" && conf == "confirmed"
+                            }
+                        };
+                        if replace {
+                            mb_singles.insert(norm_tk, (conf, syear));
+                        }
+                    }
+                }
+            }
         }
     }
+
+    let mut out = Vec::with_capacity(raw_tracks.len());
+    for mut rt in raw_tracks {
+        let tkey = normalize_key(&rt.info.title);
+        let mb_hit = mb_singles.get(&tkey).or_else(|| {
+            strip_edition_suffix(&tkey).and_then(|base| mb_singles.get(&base))
+        });
+
+        let has_chart_single = rt.info.billboard_single_rank.is_some()
+            || rt.info.official_uk_rank.is_some()
+            || rt.info.vg_lista_rank.is_some()
+            || rt.has_extra_chart;
+
+        if let Some((conf, syear)) = mb_hit {
+            rt.info.is_single = true;
+            rt.info.single_confidence = Some(conf.clone());
+            rt.info.single_year = *syear;
+        } else if has_chart_single {
+            rt.info.is_single = true;
+            rt.info.single_confidence = Some("chart".to_string());
+        }
+
+        out.push(rt.info);
+    }
+
     Ok(out)
 }

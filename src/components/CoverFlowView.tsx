@@ -187,6 +187,17 @@ export const CoverFlowView: React.FC<CoverFlowViewProps> = ({
 
   const { album: centeredAlbum, score: centeredScore } = getAlbum(centerIdx);
 
+  const displayTracks = useMemo(() => {
+    if (!settings.singlesFirst) return centerTracks;
+    const rank = (t: TrackInfo) => {
+      if (!t.isSingle) return 3;
+      if (t.singleConfidence === "confirmed") return 0;
+      if (t.singleConfidence === "chart") return 1;
+      return 2;
+    };
+    return [...centerTracks].sort((a, b) => rank(a) - rank(b));
+  }, [centerTracks, settings.singlesFirst]);
+
   // Fetch tracklist & trigger debounced auto-preview when settled on a cover!
   useEffect(() => {
     if (!centeredAlbum) {
@@ -610,15 +621,21 @@ export const CoverFlowView: React.FC<CoverFlowViewProps> = ({
             </div>
 
             {/* Compact interactive album tracklist strip */}
-            {centerTracks.length > 0 && (
+            {displayTracks.length > 0 && (
               <div className="w-full max-w-2xl mt-1 flex items-center gap-1.5 overflow-x-auto py-1 px-1">
-                {centerTracks.map((tr, i) => {
+                {displayTracks.map((tr, i) => {
                   const isActive =
                     playback.albumId === centeredAlbum.id &&
                     playback.track?.id === tr.id;
+                  const singleTooltip = tr.isSingle
+                    ? tr.singleConfidence === "chart"
+                      ? "Chart Single"
+                      : `MusicBrainz Single${tr.singleYear ? ` (${tr.singleYear})` : ""}`
+                    : undefined;
                   return (
                     <button
                       key={tr.id}
+                      title={singleTooltip}
                       onClick={() => {
                         if (playback.albumId === centeredAlbum.id) {
                           const idxInPlayback = playback.tracks.findIndex(
@@ -630,7 +647,7 @@ export const CoverFlowView: React.FC<CoverFlowViewProps> = ({
                           }
                         }
                         void api.previewAlbum(centeredAlbum.id, {
-                          startTrackIndex: i,
+                          startTrackId: tr.id,
                           isPinned: false,
                           sourceView: "coverflow",
                         });
@@ -638,12 +655,19 @@ export const CoverFlowView: React.FC<CoverFlowViewProps> = ({
                       className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] border transition-all cursor-pointer ${
                         isActive
                           ? "bg-amber-400/20 border-amber-400/50 text-amber-100 font-medium shadow-sm"
+                          : tr.isSingle
+                          ? "bg-fuchsia-500/[0.09] border-fuchsia-400/25 text-zinc-200 hover:bg-fuchsia-500/20"
                           : "bg-white/[0.03] border-white/[0.06] text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.08]"
                       }`}
                     >
                       <span className="font-mono text-[10px] opacity-60 tabular-nums">
                         {String(tr.trackNumber || i + 1).padStart(2, "0")}
                       </span>
+                      {tr.isSingle && (
+                        <span className="px-1 py-[1px] rounded bg-fuchsia-400/20 text-fuchsia-200 text-[9px] font-semibold uppercase tracking-wider">
+                          Single
+                        </span>
+                      )}
                       <span className="max-w-[140px] truncate">{tr.title}</span>
                       <span className="font-mono text-[10px] opacity-50 tabular-nums">
                         {formatSec(tr.timeSeconds)}

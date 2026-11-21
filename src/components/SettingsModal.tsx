@@ -396,6 +396,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                 <div className="space-y-2.5 flex flex-col justify-center">
                   <label className="flex items-center justify-between text-xs text-zinc-300 cursor-pointer">
+                    <span>Play Singles First (MusicBrainz + Charts)</span>
+                    <input
+                      type="checkbox"
+                      checked={draft.singlesFirst}
+                      onChange={(e) =>
+                        patch({ singlesFirst: e.target.checked })
+                      }
+                      className="accent-fuchsia-400"
+                    />
+                  </label>
+                  <label className="flex items-center justify-between text-xs text-zinc-300 cursor-pointer">
                     <span>Loudness Normalization (Timelines dB)</span>
                     <input
                       type="checkbox"

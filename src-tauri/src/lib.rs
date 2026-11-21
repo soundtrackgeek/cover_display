@@ -153,6 +153,7 @@ async fn preview_album(
     state: State<'_, AppState>,
     album_id: String,
     start_track_index: Option<usize>,
+    start_track_id: Option<i64>,
     is_pinned: Option<bool>,
     source_view: Option<String>,
 ) -> Result<(), String> {
@@ -173,10 +174,15 @@ async fn preview_album(
         .await
         .map_err(|e| format!("Track load join error: {e}"))??;
 
+    let ordered = audio::order_tracks(tracks, &settings.track_order, settings.singles_first);
+    let resolved_index = start_track_id
+        .and_then(|tid| ordered.iter().position(|t| t.id == tid))
+        .unwrap_or_else(|| start_track_index.unwrap_or(0));
+
     state.audio.send(AudioCommand::PlayAlbum {
         album,
-        tracks,
-        start_track_index: start_track_index.unwrap_or(0),
+        tracks: ordered,
+        start_track_index: resolved_index,
         settings,
         is_pinned: is_pinned.unwrap_or(false),
         source_view: source_view.unwrap_or_else(|| "coverflow".to_string()),
@@ -493,6 +499,36 @@ mod tests {
             assert!(seek_res.is_ok(), "MP3 seek failed: {:?}", seek_res);
             let sample = dec.convert_samples::<f32>().next();
             assert!(sample.is_some());
+        }
+
+        // Verify MusicBrainz Singles-first ordering on a-ha - Hunting High and Low
+        let aha_filter = AlbumFilter {
+            artist: Some("a-ha".to_string()),
+            search: "Hunting High and Low".to_string(),
+            ..Default::default()
+        };
+        let aha_res = cat.apply_filter(&aha_filter, None);
+        if let Some(aha_album) = aha_res.initial_items.first() {
+            let aha_tracks = get_album_tracks(&dir, &aha_album.id).expect("a-ha tracks");
+            let single_count = aha_tracks.iter().filter(|t| t.is_single).count();
+            let ordered = audio::order_tracks(aha_tracks.clone(), &config::TrackOrder::Sequential, true);
+            println!(
+                "a-ha '{}' singles detected: {}/{} -> first 5 ordered: {:?}",
+                aha_album.album,
+                single_count,
+                aha_tracks.len(),
+                ordered
+                    .iter()
+                    .take(5)
+                    .map(|t| format!("{} [single={}]", t.title, t.is_single))
+                    .collect::<Vec<_>>()
+            );
+            assert!(single_count >= 3, "Expected at least 3 singles on Hunting High and Low");
+            assert!(ordered[0].is_single);
+            assert!(ordered[single_count - 1].is_single);
+            if ordered.len() > single_count {
+                assert!(!ordered[single_count].is_single);
+            }
         }
     }
 }

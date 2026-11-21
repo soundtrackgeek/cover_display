@@ -39,6 +39,7 @@ export interface AppSettings {
   previewPercentage: number;
   previewFixedOffsetSec: number;
   trackOrder: TrackOrder;
+  singlesFirst: boolean;
   normalizeLoudness: boolean;
   volume: number;
   hoverDelayMs: number;
@@ -85,6 +86,9 @@ export interface TrackInfo {
   billboardSingleRank: number | null;
   officialUkRank: number | null;
   vgListaRank: number | null;
+  isSingle: boolean;
+  singleConfidence: string | null;
+  singleYear: number | null;
 }
 
 export interface GenreFacet {

@@ -114,6 +114,18 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                     {String(tr.trackNumber || i + 1).padStart(2, "0")}
                   </span>
                   <span className="flex-1 truncate">{tr.title}</span>
+                  {tr.isSingle && (
+                    <span
+                      className="shrink-0 px-1.5 py-[1px] rounded bg-fuchsia-400/20 text-fuchsia-200 text-[9px] font-semibold uppercase tracking-wider"
+                      title={
+                        tr.singleConfidence === "chart"
+                          ? "Chart Single"
+                          : `MusicBrainz Single${tr.singleYear ? ` (${tr.singleYear})` : ""}`
+                      }
+                    >
+                      Single
+                    </span>
+                  )}
                   {tr.loved && <Heart className="w-3 h-3 fill-rose-400 text-rose-400 shrink-0" />}
                   <span className="font-mono text-[10px] text-zinc-500 tabular-nums">
                     {formatSec(tr.timeSeconds)}
@@ -148,6 +160,22 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                 <span className="text-xs font-semibold text-white truncate">
                   {playback.track.title}
                 </span>
+                {playback.track.isSingle && (
+                  <span
+                    className="shrink-0 px-1.5 py-[1px] rounded bg-fuchsia-500/25 border border-fuchsia-400/35 text-fuchsia-200 text-[9px] font-semibold uppercase tracking-wider"
+                    title={
+                      playback.track.singleConfidence === "chart"
+                        ? "Chart Single"
+                        : `MusicBrainz Single${
+                            playback.track.singleYear
+                              ? ` (${playback.track.singleYear})`
+                              : ""
+                          }`
+                    }
+                  >
+                    Single
+                  </span>
+                )}
                 <span className="shrink-0 text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/[0.07] text-zinc-300 tabular-nums">
                   {playback.trackIndex + 1}/{playback.totalTracks}
                 </span>
@@ -333,8 +361,22 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
         </div>
       </div>
 
-      {/* Right: Quick Preview Strategy + Clip Sec + Volume + Tracklist */}
+      {/* Right: Singles First Toggle + Quick Preview Strategy + Clip Sec + Volume + Tracklist */}
       <div className="flex items-center gap-2 shrink-0">
+        <button
+          onClick={() =>
+            onQuickUpdateSettings({ singlesFirst: !settings.singlesFirst })
+          }
+          className={`px-2 py-1 rounded-lg border text-[11px] font-medium transition-colors cursor-pointer ${
+            settings.singlesFirst
+              ? "bg-fuchsia-500/20 border-fuchsia-400/45 text-fuchsia-200"
+              : "bg-white/[0.04] border-white/[0.08] text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.09]"
+          }`}
+          title="Play album singles first (MusicBrainz + Charts) before remaining tracks"
+        >
+          Singles 1st
+        </button>
+
         <select
           value={settings.previewMode}
           onChange={(e) =>

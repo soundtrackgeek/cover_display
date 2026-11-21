@@ -36,6 +36,7 @@ const INITIAL_SETTINGS: AppSettings = {
   previewPercentage: 35,
   previewFixedOffsetSec: 60,
   trackOrder: "sequential",
+  singlesFirst: true,
   normalizeLoudness: true,
   volume: 0.85,
   hoverDelayMs: 220,
