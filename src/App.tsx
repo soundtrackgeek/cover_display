@@ -225,12 +225,13 @@ export function App() {
         setView("wall");
       } else if ((e.key === "r" || e.key === "R") && totalCount > 1) {
         const randIdx = Math.floor(Math.random() * totalCount);
+        ensureRange(randIdx - 24, randIdx + 24);
         setSelectedIndex(randIdx);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [totalCount]);
+  }, [totalCount, ensureRange]);
 
   const handleSaveSettings = useCallback(async (next: AppSettings) => {
     setSettings(next);
@@ -299,12 +300,16 @@ export function App() {
 
   const handleJumpRandom = useCallback(() => {
     if (totalCount <= 1) return;
-    const randIdx = Math.floor(Math.random() * totalCount);
+    let randIdx = Math.floor(Math.random() * totalCount);
+    if (randIdx === selectedIndex) {
+      randIdx = (randIdx + 1) % totalCount;
+    }
+    ensureRange(randIdx - 24, randIdx + 24);
     setSelectedIndex(randIdx);
     if (view !== "coverflow") {
       setView("coverflow");
     }
-  }, [totalCount, view]);
+  }, [totalCount, selectedIndex, view, ensureRange]);
 
   const handleOpenInCoverFlow = useCallback((index: number) => {
     setSelectedIndex(index);

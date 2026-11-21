@@ -51,6 +51,7 @@ export const CoverFlowView: React.FC<CoverFlowViewProps> = ({
   const posRef = useRef<number>(selectedIndex);
   const targetRef = useRef<number | null>(null);
   const velRef = useRef<number>(0);
+  const lastReportedIdxRef = useRef<number>(selectedIndex);
   const [renderPos, setRenderPos] = useState<number>(selectedIndex);
 
   const [scrubberMarks, setScrubberMarks] = useState<ScrubberMark[]>([]);
@@ -62,28 +63,30 @@ export const CoverFlowView: React.FC<CoverFlowViewProps> = ({
     null
   );
 
-  // Sync external selectedIndex jumps (e.g. jump from Cover Wall or filter reset)
+  // Sync external selectedIndex jumps (e.g. "Surprise Me", Cover Wall jump, or filter reset)
   useEffect(() => {
     const clamped = Math.max(0, Math.min(Math.max(0, totalCount - 1), selectedIndex));
-    if (Math.abs(posRef.current - clamped) > 0.6) {
-      if (Math.abs(posRef.current - clamped) > 40) {
-        posRef.current = clamped;
-        velRef.current = 0;
-        targetRef.current = null;
-        setRenderPos(clamped);
-      } else {
-        targetRef.current = clamped;
-      }
+    if (clamped === lastReportedIdxRef.current) return;
+    lastReportedIdxRef.current = clamped;
+    velRef.current = 0;
+    if (Math.abs(posRef.current - clamped) > 40) {
+      posRef.current = clamped;
+      targetRef.current = null;
+      setRenderPos(clamped);
+    } else {
+      targetRef.current = clamped;
     }
   }, [selectedIndex, totalCount]);
 
   // Reset physics on query change
   useEffect(() => {
     const clamped = Math.max(0, Math.min(Math.max(0, totalCount - 1), selectedIndex));
+    lastReportedIdxRef.current = clamped;
     posRef.current = clamped;
     velRef.current = 0;
     targetRef.current = null;
     setRenderPos(clamped);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryId, totalCount]);
 
   // Fetch lightweight scrubber index marks for instant ultra-fast navigation across 74k albums
@@ -177,13 +180,17 @@ export const CoverFlowView: React.FC<CoverFlowViewProps> = ({
     return () => cancelAnimationFrame(rafId);
   }, [totalCount]);
 
-  // Report settled integer selection up to parent
+  // Report user-driven Cover Flow position changes up to parent without ping-ponging external jumps
   useEffect(() => {
     if (totalCount === 0) return;
-    if (centerIdx !== selectedIndex) {
+    if (targetRef.current !== null && Math.abs(targetRef.current - centerIdx) > 0) {
+      return;
+    }
+    if (centerIdx !== lastReportedIdxRef.current) {
+      lastReportedIdxRef.current = centerIdx;
       onSelectIndex(centerIdx);
     }
-  }, [centerIdx, totalCount, selectedIndex, onSelectIndex]);
+  }, [centerIdx, totalCount, onSelectIndex]);
 
   const { album: centeredAlbum, score: centeredScore } = getAlbum(centerIdx);
 

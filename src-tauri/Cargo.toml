@@ -1,6 +1,6 @@
 [package]
 name = "cover-display"
-version = "0.2.0"
+version = "0.2.1"
 description = "High-speed Cover Flow and Cover Wall music library preview browser"
 authors = ["Jørn Tillnes"]
 edition = "2021"
