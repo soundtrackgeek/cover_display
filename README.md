@@ -1,0 +1,78 @@
+# Cover Display
+
+A fast, studio-grade desktop music library cover browser and audio preview player built with **Rust + Tauri 2 + React**. Designed to effortlessly browse tens of thousands of albums (74,000+ albums / 1.1M+ tracks) with instant filtering, smart chorus/highlight audio previews, and zero-lock read-only SQLite integration.
+
+## Features
+
+- **Classic 3D Cover Flow**
+  - Smooth 60fps momentum physics, mouse wheel turbo-scrolling, click-drag, keyboard navigation, and mirrored studio floor reflections.
+  - Adaptive ambient radial lighting extracted from the selected album cover.
+  - Ultra-fast scrubbing rail with live Artist / Album / Year HUD tooltips to leap across 74,000+ albums instantaneously.
+  - Automatic sequential track previews (configurable 15s default clips) with smooth cosine fade-in/out and inline clickable tracklist.
+- **Endless Virtualized Cover Wall**
+  - High-density row-virtualized album cover wall with adjustable tile size slider.
+  - **Mouse Hover Preview**: Hover over any cover to smoothly preview clips of each track on the album with live equalizer meters.
+  - Click any cover to **Pin/Lock** playback while navigating or scrubbing the waveform (`Esc` to unpin).
+  - Quick hover actions for Artist Discography, Similar Vibe, and jumping straight to Cover Flow.
+- **Smart Highlight & Configurable Preview Engine**
+  - Native Rust (`rodio` + `symphonia`) audio engine with zero browser autoplay restrictions, ReplayGain-style loudness normalization, and smooth fade-in/out.
+  - **Smart Highlight (BLISS Timelines + CLAP)**: Combines 1-second chroma/MFCC chorus-repetition detection and loudness peaks from `music-timelines.sqlite3` with representative windows from `music-clap.sqlite3` to jump straight to each song's strongest section.
+  - **CLAP Best Window**, **Start**, **Middle**, **Custom Percentage**, and **Fixed Offset** (`0:30`, `1:00`, `1:30`, `2:00`, or any custom timestamp).
+  - Interactive **64-bar Energy Timeline Waveform** in the bottom player dock showing the active clip window and CLAP anchor markers—click anywhere to scrub.
+- **Sonic Similarity ("Similar Vibe")**
+  - Uses `music-analysis.sqlite3` (23-dimensional BLISS sonic descriptors) to build a compact cached album centroid index and find sonically similar albums across the entire library in milliseconds.
+- **Fast Faceted Filtering & Saved Presets**
+  - Instant search across Artist, Album, Genre, Year, and Label (`/`).
+  - Filter by Genre (multi-select with counts), Decade / Year Range, Artist Discography, Chart Appearances (Billboard, UK Official, VG-lista), Minimum Rating, Loved Tracks, and Cover Availability.
+  - Starter discovery chips (`80s Synthpop`, `70s Metal & Hard Rock`, `Synthwave`, `Charted Hits`, `Top Rated`, `Loved`, `Soundtracks`) plus custom saved filter presets.
+- **Hands-Free In-App Auto-Updater**
+  - Automatically checks GitHub Releases on startup and every 30 minutes, plus a manual check button in Settings.
+  - Downloads, installs silently (`passive` NSIS mode), and restarts Cover Display automatically without installer prompts.
+
+## Database Integration (Read-Only)
+
+By default, Cover Display reads from:
+
+```text
+C:\Users\jtill\AppData\Roaming\com.local.musiclibrary\
+├── music-library.sqlite3     # Albums, tracks, covers, charts, ratings
+├── music-analysis.sqlite3    # Track audio hashes & BLISS sonic descriptors
+├── music-clap.sqlite3        # CLAP 3×10s representative window timestamps
+└── music-timelines.sqlite3   # 1-second chroma, loudness & MFCC timelines
+```
+
+All databases are opened strictly **read-only** (`SQLITE_OPEN_READ_ONLY` + `PRAGMA query_only = ON`) and never modify or lock your library. The library path can be customized in **Settings → Library & Databases**.
+
+## Keyboard Shortcuts
+
+| Shortcut | Action |
+| --- | --- |
+| `←` / `→` | Previous / next album in Cover Flow (`Shift` = ±10) |
+| `PageUp` / `PageDown` | Jump ±50 albums in Cover Flow |
+| `Home` / `End` | First / last album in Cover Flow |
+| `↑` / `↓` | Previous / next track on active album |
+| `Space` | Play / Pause preview |
+| `1` / `2` | Switch between Cover Flow and Cover Wall |
+| `/` | Focus search bar |
+| `R` | Jump to a random album |
+| `Esc` | Unpin locked album in Cover Wall |
+
+## Development
+
+```bash
+# Install dependencies
+npm install
+
+# Run in development mode
+npm run tauri:dev
+
+# Build Windows NSIS installer locally
+npm run tauri:build
+
+# Clean Tauri/Cargo build artifacts
+npm run tauri:clean
+```
+
+## Releases & Auto-Updates
+
+Every version bump pushed to `master` (updating `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json`) automatically triggers `.github/workflows/release.yml` to build a signed Windows NSIS `setup.exe` installer and `latest.json` updater manifest on GitHub Releases.
