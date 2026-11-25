@@ -19,7 +19,11 @@ A fast, studio-grade desktop music library cover browser and audio preview playe
   - **Smart Highlight (BLISS Timelines + CLAP)**: Combines 1-second chroma/MFCC chorus-repetition detection and loudness peaks from `music-timelines.sqlite3` with representative windows from `music-clap.sqlite3` to jump straight to each song's strongest section.
   - **CLAP Best Window**, **Start**, **Middle**, **Custom Percentage**, and **Fixed Offset** (`0:30`, `1:00`, `1:30`, `2:00`, or any custom timestamp).
   - **Play Singles First (MusicBrainz + Charts)**: Prioritizes each album's MusicBrainz `track_singles` and charted single tracks ahead of the rest of the album (with quick toggle in the player bar, Settings control, and `SINGLE` badges in tracklists).
+  - **Full Track Playback Mode**: One-click `Full` toggle in the player bar lets any track continue playing cleanly to the end without clip cutoff.
   - Interactive **64-bar Energy Timeline Waveform** in the bottom player dock showing the active clip window and CLAP anchor markers—click anywhere to scrub.
+- **Local Discovery Crate & File Actions**
+  - Press `B` or click the bookmark button on any cover (in Cover Flow, Cover Wall, or the player bar) to collect albums in a local **Discovery Crate** stored in Cover Display's own config—never touching your read-only SQLite databases.
+  - Filter Cover Flow or Cover Wall down to your Crate in one click, **Open Album Folder** in Explorer, or export your entire Crate as a `.m3u8` playlist for your main music player.
 - **Sonic Similarity ("Similar Vibe")**
   - Uses `music-analysis.sqlite3` (23-dimensional BLISS sonic descriptors) to build a compact cached album centroid index and find sonically similar albums across the entire library in milliseconds.
 - **Fast Faceted Filtering & Saved Presets**
@@ -56,7 +60,8 @@ All databases are opened strictly **read-only** (`SQLITE_OPEN_READ_ONLY` + `PRAG
 | `1` / `2` | Switch between Cover Flow and Cover Wall |
 | `/` | Focus search bar |
 | `R` | Jump to a random album |
-| `Esc` | Unpin locked album in Cover Wall |
+| `B` | Save / remove active album in Discovery Crate |
+| `Esc` | Unpin locked album in Cover Wall / close Crate drawer |
 
 ## Development
 

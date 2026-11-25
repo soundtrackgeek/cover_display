@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUp,
+  Bookmark,
   Disc3,
+  FolderOpen,
   Layers,
   Pin,
   Sparkles,
@@ -22,6 +24,9 @@ interface CoverWallViewProps {
   onFilterArtist: (artist: string) => void;
   onFindSimilar: (albumId: string) => void;
   onOpenInCoverFlow: (index: number) => void;
+  crateSet: Set<string>;
+  onToggleCrate: (albumId: string) => void;
+  onOpenFolder: (albumId: string) => void;
 }
 
 const OVERSCAN_ROWS = 3;
@@ -37,6 +42,9 @@ export const CoverWallView: React.FC<CoverWallViewProps> = ({
   onFilterArtist,
   onFindSimilar,
   onOpenInCoverFlow,
+  crateSet,
+  onToggleCrate,
+  onOpenFolder,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [viewport, setViewport] = useState({ width: 1200, height: 700 });
@@ -241,6 +249,7 @@ export const CoverWallView: React.FC<CoverWallViewProps> = ({
                     playback.albumId === album.id && playback.status === "playing";
                   const isPinned = playback.albumId === album.id && playback.isPinned;
                   const isHovered = hoveredAlbumId === album.id;
+                  const isCrated = crateSet.has(album.id);
 
                   return (
                     <div
@@ -266,16 +275,44 @@ export const CoverWallView: React.FC<CoverWallViewProps> = ({
                         </div>
                       )}
 
-                      {/* Pinned indicator */}
-                      {isPinned && (
+                      {/* Pinned / Crated indicator */}
+                      {isPinned ? (
                         <div className="absolute top-1.5 left-1.5 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-400 text-zinc-950 text-[10px] font-semibold shadow">
                           <Pin className="w-2.5 h-2.5 fill-zinc-950" />
                           Pinned
                         </div>
-                      )}
+                      ) : isCrated && score <= 0 ? (
+                        <div className="absolute top-1.5 left-1.5 p-1 rounded-md bg-black/75 backdrop-blur-sm border border-amber-400/40 text-amber-300 shadow">
+                          <Bookmark className="w-2.5 h-2.5 fill-amber-300" />
+                        </div>
+                      ) : null}
 
                       {/* Quick Action buttons on hover */}
                       <div className="absolute top-1.5 right-1.5 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onToggleCrate(album.id);
+                          }}
+                          className={`p-1.5 rounded-md backdrop-blur-md transition-colors cursor-pointer ${
+                            isCrated
+                              ? "bg-amber-400 text-zinc-950"
+                              : "bg-black/75 hover:bg-amber-400 text-zinc-200 hover:text-zinc-950"
+                          }`}
+                          title={isCrated ? "Remove from Discovery Crate" : "Save to Discovery Crate"}
+                        >
+                          <Bookmark className={`w-3 h-3 ${isCrated ? "fill-zinc-950" : ""}`} />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onOpenFolder(album.id);
+                          }}
+                          className="p-1.5 rounded-md bg-black/75 hover:bg-white text-zinc-200 hover:text-zinc-950 backdrop-blur-md transition-colors cursor-pointer"
+                          title="Open album folder in Explorer"
+                        >
+                          <FolderOpen className="w-3 h-3" />
+                        </button>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();

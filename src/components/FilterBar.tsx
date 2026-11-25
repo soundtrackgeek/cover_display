@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   Award,
+  Bookmark,
   BookmarkPlus,
   Calendar,
   ChevronDown,
@@ -32,6 +33,7 @@ interface FilterBarProps {
   onDeletePreset: (id: string) => void;
   similarSource: AlbumSummary | null;
   loadingSimilar: boolean;
+  crateCount: number;
 }
 
 const DECADES = [
@@ -109,6 +111,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
   onDeletePreset,
   similarSource,
   loadingSimilar,
+  crateCount,
 }) => {
   const [openMenu, setOpenMenu] = useState<OpenPopover>(null);
   const [genreSearch, setGenreSearch] = useState("");
@@ -148,6 +151,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
     filter.minRating != null ||
     filter.lovedOnly ||
     filter.hasCoverOnly ||
+    filter.crateOnly ||
     !!filter.similarToAlbumId;
 
   const filteredGenres = genreSearch.trim()
@@ -645,6 +649,25 @@ export const FilterBar: React.FC<FilterBarProps> = ({
         >
           All Library
         </button>
+
+        {(crateCount > 0 || filter.crateOnly) && (
+          <button
+            onClick={() =>
+              onChange({
+                ...DEFAULT_FILTER,
+                crateOnly: !filter.crateOnly,
+              })
+            }
+            className={`shrink-0 flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium border transition-colors cursor-pointer ${
+              filter.crateOnly
+                ? "bg-amber-400/20 border-amber-400/50 text-amber-100"
+                : "bg-amber-400/[0.08] border-amber-400/25 text-amber-200/90 hover:bg-amber-400/15"
+            }`}
+          >
+            <Bookmark className="w-2.5 h-2.5 fill-amber-300 text-amber-300" />
+            Crate ({crateCount})
+          </button>
+        )}
 
         {STARTER_CHIPS.map((chip) => (
           <button

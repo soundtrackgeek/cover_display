@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import {
+  Bookmark,
   Disc3,
   Download,
   Grid2x2,
@@ -13,6 +14,7 @@ import {
 import { api } from "./api";
 import { CoverFlowView } from "./components/CoverFlowView";
 import { CoverWallView } from "./components/CoverWallView";
+import { CrateDrawer } from "./components/CrateDrawer";
 import { FilterBar } from "./components/FilterBar";
 import { PlayerBar } from "./components/PlayerBar";
 import { SettingsModal } from "./components/SettingsModal";
@@ -31,6 +33,7 @@ import { DEFAULT_FILTER } from "./types";
 const INITIAL_SETTINGS: AppSettings = {
   libraryDir: "",
   clipDurationSec: 15,
+  fullTrackMode: false,
   fadeMs: 650,
   previewMode: "smart_highlight",
   previewPercentage: 35,
@@ -46,6 +49,7 @@ const INITIAL_SETTINGS: AppSettings = {
   autoPlayOnSelect: true,
   autoInstallUpdates: true,
   savedFilters: [],
+  crateAlbumIds: [],
 };
 
 const INITIAL_PLAYBACK: PlaybackState = {
@@ -70,6 +74,7 @@ const INITIAL_PLAYBACK: PlaybackState = {
   level: 0,
   volume: 0.85,
   isPinned: false,
+  fullTrackMode: false,
   sourceView: "coverflow",
 };
 
@@ -91,8 +96,24 @@ export function App() {
   const [playback, setPlayback] = useState<PlaybackState>(INITIAL_PLAYBACK);
   const [accentRgb, setAccentRgb] = useState<[number, number, number]>([217, 138, 46]);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [crateOpen, setCrateOpen] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
 
   const searchRef = useRef<HTMLInputElement>(null);
+  const toastTimerRef = useRef<number | null>(null);
+
+  const showToast = useCallback((msg: string) => {
+    setToast(msg);
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = window.setTimeout(() => {
+      setToast(null);
+    }, 2600);
+  }, []);
+
+  const crateSet = useMemo(
+    () => new Set(settings.crateAlbumIds),
+    [settings.crateAlbumIds]
+  );
 
   const { updater, checkForUpdates, installUpdate } = useUpdater(
     settings.autoInstallUpdates
@@ -195,6 +216,59 @@ export function App() {
     };
   }, [activeAccentAlbumId]);
 
+  const handleToggleCrate = useCallback(
+    (albumId: string) => {
+      const wasIn = crateSet.has(albumId);
+      api
+        .toggleCrateAlbum(albumId)
+        .then((nextIds) => {
+          setSettings((prev) => ({ ...prev, crateAlbumIds: nextIds }));
+          showToast(wasIn ? "Removed from Discovery Crate" : "Saved to Discovery Crate");
+          setFilter((f) => (f.crateOnly ? { ...f } : f));
+        })
+        .catch((err) => showToast(`Crate error: ${String(err)}`));
+    },
+    [crateSet, showToast]
+  );
+
+  const handleClearCrate = useCallback(() => {
+    api
+      .clearCrate()
+      .then((nextIds) => {
+        setSettings((prev) => ({ ...prev, crateAlbumIds: nextIds }));
+        showToast("Cleared Discovery Crate");
+        setFilter((f) => (f.crateOnly ? { ...DEFAULT_FILTER } : f));
+      })
+      .catch((err) => showToast(`Failed to clear crate: ${String(err)}`));
+  }, [showToast]);
+
+  const handleOpenFolder = useCallback(
+    (albumId: string) => {
+      api
+        .openAlbumFolder(albumId)
+        .catch((err) => showToast(String(err)));
+    },
+    [showToast]
+  );
+
+  const handleExportCrateM3u = useCallback(async () => {
+    try {
+      const savedPath = await api.exportCrateM3u();
+      showToast(`Exported playlist to ${savedPath}`);
+    } catch (err) {
+      showToast(`Export failed: ${String(err)}`);
+    }
+  }, [showToast]);
+
+  const handleBrowseCrate = useCallback(() => {
+    setSearchInput("");
+    setFilter({
+      ...DEFAULT_FILTER,
+      crateOnly: true,
+    });
+    setCrateOpen(false);
+  }, []);
+
   // Global keyboard shortcuts
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -227,11 +301,28 @@ export function App() {
         const randIdx = Math.floor(Math.random() * totalCount);
         ensureRange(randIdx - 24, randIdx + 24);
         setSelectedIndex(randIdx);
+      } else if (e.key === "b" || e.key === "B") {
+        const targetId =
+          view === "coverflow"
+            ? getAlbum(selectedIndex).album?.id ?? playback.albumId
+            : playback.albumId;
+        if (targetId) {
+          e.preventDefault();
+          handleToggleCrate(targetId);
+        }
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [totalCount, ensureRange]);
+  }, [
+    totalCount,
+    ensureRange,
+    view,
+    getAlbum,
+    selectedIndex,
+    playback.albumId,
+    handleToggleCrate,
+  ]);
 
   const handleSaveSettings = useCallback(async (next: AppSettings) => {
     setSettings(next);
@@ -412,6 +503,30 @@ export function App() {
             <span className="hidden lg:inline">Surprise Me</span>
           </button>
 
+          <button
+            onClick={() => setCrateOpen(true)}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs transition-colors cursor-pointer ${
+              settings.crateAlbumIds.length > 0
+                ? "bg-amber-400/12 hover:bg-amber-400/20 border-amber-400/35 text-amber-100"
+                : "bg-white/[0.05] hover:bg-white/[0.11] border-white/[0.08] text-zinc-300"
+            }`}
+            title="Open Discovery Crate (press B on any cover to save)"
+          >
+            <Bookmark
+              className={`w-3.5 h-3.5 ${
+                settings.crateAlbumIds.length > 0
+                  ? "text-amber-300 fill-amber-300"
+                  : "text-zinc-400"
+              }`}
+            />
+            <span className="hidden lg:inline">Crate</span>
+            {settings.crateAlbumIds.length > 0 && (
+              <span className="px-1.5 py-[1px] rounded-full bg-amber-400 text-zinc-950 font-mono text-[10px] font-bold tabular-nums">
+                {settings.crateAlbumIds.length}
+              </span>
+            )}
+          </button>
+
           {/* In-App Auto-Update Pill */}
           {(updater.available || updater.downloading || updater.installing) && (
             <button
@@ -452,6 +567,7 @@ export function App() {
         onDeletePreset={handleDeletePreset}
         similarSource={similarSource}
         loadingSimilar={loadingSimilar}
+        crateCount={settings.crateAlbumIds.length}
       />
 
       {/* Main Content Stage: Cover Flow OR Cover Wall */}
@@ -479,6 +595,9 @@ export function App() {
             accentRgb={accentRgb}
             onFilterArtist={handleFilterArtist}
             onFindSimilar={handleFindSimilar}
+            crateSet={crateSet}
+            onToggleCrate={handleToggleCrate}
+            onOpenFolder={handleOpenFolder}
           />
         ) : (
           <CoverWallView
@@ -494,6 +613,9 @@ export function App() {
             onFilterArtist={handleFilterArtist}
             onFindSimilar={handleFindSimilar}
             onOpenInCoverFlow={handleOpenInCoverFlow}
+            crateSet={crateSet}
+            onToggleCrate={handleToggleCrate}
+            onOpenFolder={handleOpenFolder}
           />
         )}
       </main>
@@ -504,7 +626,30 @@ export function App() {
         settings={settings}
         onQuickUpdateSettings={handleQuickUpdateSettings}
         onOpenSettings={() => setSettingsOpen(true)}
+        isCrated={playback.albumId != null && crateSet.has(playback.albumId)}
+        onToggleCrate={handleToggleCrate}
+        onOpenFolder={handleOpenFolder}
       />
+
+      {/* Discovery Crate Slide-Over Drawer */}
+      <CrateDrawer
+        open={crateOpen}
+        onClose={() => setCrateOpen(false)}
+        crateAlbumIds={settings.crateAlbumIds}
+        activeAlbumId={playback.albumId}
+        onRemoveAlbum={handleToggleCrate}
+        onClearCrate={handleClearCrate}
+        onBrowseCrate={handleBrowseCrate}
+        onOpenFolder={handleOpenFolder}
+        onExportM3u={handleExportCrateM3u}
+      />
+
+      {/* Subtle Floating Action Toast */}
+      {toast && (
+        <div className="pointer-events-none fixed left-1/2 -translate-x-1/2 bottom-[92px] z-50 px-3.5 py-1.5 rounded-full glass-panel border border-amber-400/35 text-xs font-medium text-amber-100 shadow-2xl">
+          {toast}
+        </div>
+      )}
 
       {/* Settings & Auto-Updater Modal */}
       <SettingsModal

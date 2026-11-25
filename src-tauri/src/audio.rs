@@ -37,6 +37,7 @@ pub struct PlaybackState {
     pub level: f32,
     pub volume: f32,
     pub is_pinned: bool,
+    pub full_track_mode: bool,
     pub source_view: String, // "coverflow" | "wall"
 }
 
@@ -64,6 +65,7 @@ impl Default for PlaybackState {
             level: 0.0,
             volume: 0.85,
             is_pinned: false,
+            full_track_mode: false,
             source_view: "coverflow".to_string(),
         }
     }
@@ -157,15 +159,31 @@ where
         clip_duration_sec: f32,
         fade_ms: u32,
         gain: f32,
+        is_full_track: bool,
+        start_at_zero: bool,
         early_stop: Arc<AtomicBool>,
         level_bits: Arc<AtomicU32>,
         elapsed_samples: Arc<AtomicU64>,
     ) -> Self {
         let channels = inner.channels().max(1);
         let sample_rate = inner.sample_rate().max(8000);
-        let total_samples = ((clip_duration_sec * sample_rate as f32) as u64) * channels as u64;
-        let fade_sec = (fade_ms as f32 / 1000.0).min(clip_duration_sec * 0.35);
-        let fade_samples = ((fade_sec * sample_rate as f32) as u64) * channels as u64;
+        let total_samples = if is_full_track {
+            u64::MAX
+        } else {
+            ((clip_duration_sec * sample_rate as f32) as u64) * channels as u64
+        };
+        let (fade_in_samples, fade_out_samples) = if is_full_track {
+            let fi = if start_at_zero {
+                0
+            } else {
+                ((0.12 * sample_rate as f32) as u64) * channels as u64
+            };
+            (fi, 0)
+        } else {
+            let fade_sec = (fade_ms as f32 / 1000.0).min(clip_duration_sec * 0.35);
+            let fade_samples = ((fade_sec * sample_rate as f32) as u64) * channels as u64;
+            (fade_samples, fade_samples)
+        };
         let early_fade_samples = ((0.18 * sample_rate as f32) as u64) * channels as u64;
 
         Self {
@@ -174,8 +192,8 @@ where
             sample_rate,
             sample_pos: 0,
             total_samples,
-            fade_in_samples: fade_samples,
-            fade_out_samples: fade_samples,
+            fade_in_samples,
+            fade_out_samples,
             gain,
             early_stop,
             early_stop_start: None,
@@ -455,6 +473,8 @@ fn audio_actor_loop(app: AppHandle, rx: Receiver<AudioCommand>, mut settings: Ap
                 plan.clip_duration_sec,
                 cfg.fade_ms,
                 gain,
+                cfg.full_track_mode,
+                actual_start < 0.5,
                 new_early.clone(),
                 new_level.clone(),
                 new_elapsed.clone(),
@@ -484,6 +504,7 @@ fn audio_actor_loop(app: AppHandle, rx: Receiver<AudioCommand>, mut settings: Ap
             state.clap_windows = plan.clap_windows;
             state.has_timeline = plan.has_timeline;
             state.has_clap = plan.has_clap;
+            state.full_track_mode = cfg.full_track_mode;
             state.level = 0.0;
             return;
         }
@@ -623,13 +644,17 @@ fn audio_actor_loop(app: AppHandle, rx: Receiver<AudioCommand>, mut settings: Ap
                 AudioCommand::UpdateSettings(new_cfg) => {
                     let order_changed = settings.singles_first != new_cfg.singles_first
                         || settings.track_order != new_cfg.track_order;
-                    let mode_changed = settings.preview_mode != new_cfg.preview_mode
+                    let full_changed = settings.full_track_mode != new_cfg.full_track_mode;
+                    let mode_changed = full_changed
+                        || settings.preview_mode != new_cfg.preview_mode
                         || settings.clip_duration_sec != new_cfg.clip_duration_sec
                         || settings.preview_percentage != new_cfg.preview_percentage
                         || settings.preview_fixed_offset_sec != new_cfg.preview_fixed_offset_sec
                         || settings.normalize_loudness != new_cfg.normalize_loudness;
+                    let switching_into_full = full_changed && new_cfg.full_track_mode;
                     settings = new_cfg;
                     state.volume = settings.volume;
+                    state.full_track_mode = settings.full_track_mode;
                     if let Some(ref s) = sink {
                         s.set_volume(state.volume);
                     }
@@ -645,6 +670,11 @@ fn audio_actor_loop(app: AppHandle, rx: Receiver<AudioCommand>, mut settings: Ap
                     }
                     if mode_changed && state.status == "playing" && !state.tracks.is_empty() {
                         let idx = state.track_index;
+                        let continue_from = if switching_into_full {
+                            Some((state.clip_start_sec + state.clip_elapsed_sec).max(0.0))
+                        } else {
+                            None
+                        };
                         start_track(
                             &mut state,
                             &mut sink,
@@ -653,7 +683,7 @@ fn audio_actor_loop(app: AppHandle, rx: Receiver<AudioCommand>, mut settings: Ap
                             &mut elapsed_samples,
                             &mut current_sample_rate,
                             idx,
-                            None,
+                            continue_from,
                             &settings,
                         );
                     }

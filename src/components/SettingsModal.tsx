@@ -396,6 +396,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                 <div className="space-y-2.5 flex flex-col justify-center">
                   <label className="flex items-center justify-between text-xs text-zinc-300 cursor-pointer">
+                    <span>Full Track Playback (no clip cutoff)</span>
+                    <input
+                      type="checkbox"
+                      checked={draft.fullTrackMode}
+                      onChange={(e) =>
+                        patch({ fullTrackMode: e.target.checked })
+                      }
+                      className="accent-amber-400"
+                    />
+                  </label>
+                  <label className="flex items-center justify-between text-xs text-zinc-300 cursor-pointer">
                     <span>Play Singles First (MusicBrainz + Charts)</span>
                     <input
                       type="checkbox"

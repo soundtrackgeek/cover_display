@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Bookmark,
   ChevronLeft,
   ChevronRight,
   Disc3,
+  FolderOpen,
   Heart,
   Play,
   Sparkles,
@@ -30,6 +32,9 @@ interface CoverFlowViewProps {
   accentRgb: [number, number, number];
   onFilterArtist: (artist: string) => void;
   onFindSimilar: (albumId: string) => void;
+  crateSet: Set<string>;
+  onToggleCrate: (albumId: string) => void;
+  onOpenFolder: (albumId: string) => void;
 }
 
 const VISIBLE_SIDE = 8;
@@ -46,6 +51,9 @@ export const CoverFlowView: React.FC<CoverFlowViewProps> = ({
   accentRgb,
   onFilterArtist,
   onFindSimilar,
+  crateSet,
+  onToggleCrate,
+  onOpenFolder,
 }) => {
   // Smooth continuous float position for silky 60fps Cover Flow physics
   const posRef = useRef<number>(selectedIndex);
@@ -624,6 +632,33 @@ export const CoverFlowView: React.FC<CoverFlowViewProps> = ({
               >
                 <Sparkles className="w-3 h-3 text-amber-300" />
                 Similar Vibe
+              </button>
+
+              <button
+                onClick={() => onToggleCrate(centeredAlbum.id)}
+                className={`flex items-center gap-1 px-2.5 py-0.5 rounded-full border transition-colors cursor-pointer ${
+                  crateSet.has(centeredAlbum.id)
+                    ? "bg-amber-400/20 border-amber-400/45 text-amber-100"
+                    : "bg-white/[0.06] hover:bg-amber-400/15 border-white/10 hover:border-amber-400/35 text-zinc-200 hover:text-amber-100"
+                }`}
+                title="Save or remove from Discovery Crate (B)"
+              >
+                <Bookmark
+                  className={`w-3 h-3 ${
+                    crateSet.has(centeredAlbum.id)
+                      ? "text-amber-300 fill-amber-300"
+                      : "text-zinc-300"
+                  }`}
+                />
+                {crateSet.has(centeredAlbum.id) ? "In Crate" : "Crate"}
+              </button>
+
+              <button
+                onClick={() => onOpenFolder(centeredAlbum.id)}
+                className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/10 text-zinc-300 hover:text-white transition-colors cursor-pointer"
+                title="Open album folder in Explorer"
+              >
+                <FolderOpen className="w-3 h-3" />
               </button>
             </div>
 

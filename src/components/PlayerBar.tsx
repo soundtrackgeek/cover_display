@@ -1,6 +1,8 @@
 import React, { useMemo, useRef, useState } from "react";
 import {
+  Bookmark,
   ChevronUp,
+  FolderOpen,
   Heart,
   ListMusic,
   Pause,
@@ -22,6 +24,9 @@ interface PlayerBarProps {
   settings: AppSettings;
   onQuickUpdateSettings: (patch: Partial<AppSettings>) => void;
   onOpenSettings: () => void;
+  isCrated: boolean;
+  onToggleCrate: (albumId: string) => void;
+  onOpenFolder: (albumId: string) => void;
 }
 
 const QUICK_MODES: { value: PreviewMode; label: string }[] = [
@@ -40,6 +45,9 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   settings,
   onQuickUpdateSettings,
   onOpenSettings,
+  isCrated,
+  onToggleCrate,
+  onOpenFolder,
 }) => {
   const [showTracks, setShowTracks] = useState(false);
   const [hoverSec, setHoverSec] = useState<number | null>(null);
@@ -233,22 +241,42 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
         >
           <Square className="w-3.5 h-3.5 fill-current" />
         </button>
-        {isActive && (
-          <button
-            onClick={() => void api.setPinned(!playback.isPinned)}
-            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-              playback.isPinned
-                ? "bg-amber-400/20 text-amber-300"
-                : "text-zinc-500 hover:text-zinc-200 hover:bg-white/10"
-            }`}
-            title={playback.isPinned ? "Unpin album (Esc)" : "Pin album playback"}
-          >
-            {playback.isPinned ? (
-              <Pin className="w-3.5 h-3.5" />
-            ) : (
-              <PinOff className="w-3.5 h-3.5" />
-            )}
-          </button>
+        {isActive && playback.albumId && (
+          <>
+            <button
+              onClick={() => void api.setPinned(!playback.isPinned)}
+              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                playback.isPinned
+                  ? "bg-amber-400/20 text-amber-300"
+                  : "text-zinc-500 hover:text-zinc-200 hover:bg-white/10"
+              }`}
+              title={playback.isPinned ? "Unpin album (Esc)" : "Pin album playback"}
+            >
+              {playback.isPinned ? (
+                <Pin className="w-3.5 h-3.5" />
+              ) : (
+                <PinOff className="w-3.5 h-3.5" />
+              )}
+            </button>
+            <button
+              onClick={() => onToggleCrate(playback.albumId!)}
+              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                isCrated
+                  ? "bg-amber-400/20 text-amber-300"
+                  : "text-zinc-500 hover:text-amber-200 hover:bg-white/10"
+              }`}
+              title={isCrated ? "Remove from Discovery Crate (B)" : "Save to Discovery Crate (B)"}
+            >
+              <Bookmark className={`w-3.5 h-3.5 ${isCrated ? "fill-amber-300" : ""}`} />
+            </button>
+            <button
+              onClick={() => onOpenFolder(playback.albumId!)}
+              className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-white/10 transition-colors cursor-pointer"
+              title="Open album folder in Explorer"
+            >
+              <FolderOpen className="w-3.5 h-3.5" />
+            </button>
+          </>
         )}
       </div>
 
@@ -271,8 +299,9 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
               </>
             ) : (
               <span className="text-zinc-500">
-                Mode: {previewModeLabel(settings.previewMode)} · {settings.clipDurationSec}s
-                clips
+                {settings.fullTrackMode
+                  ? "Mode: Full Track playback"
+                  : `Mode: ${previewModeLabel(settings.previewMode)} · ${settings.clipDurationSec}s clips`}
               </span>
             )}
           </div>
@@ -393,7 +422,25 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
         </select>
 
         <button
+          onClick={() =>
+            onQuickUpdateSettings({ fullTrackMode: !settings.fullTrackMode })
+          }
+          className={`px-2 py-1 rounded-lg border text-[11px] font-medium transition-colors cursor-pointer ${
+            settings.fullTrackMode
+              ? "bg-amber-400/20 border-amber-400/50 text-amber-200"
+              : "bg-white/[0.04] border-white/[0.08] text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.09]"
+          }`}
+          title="Play full tracks continuously without clip cutoff"
+        >
+          Full
+        </button>
+
+        <button
           onClick={() => {
+            if (settings.fullTrackMode) {
+              onQuickUpdateSettings({ fullTrackMode: false });
+              return;
+            }
             const idx = QUICK_CLIP_SECS.indexOf(settings.clipDurationSec);
             const next = QUICK_CLIP_SECS[(idx + 1) % QUICK_CLIP_SECS.length];
             onQuickUpdateSettings({ clipDurationSec: next });
@@ -402,8 +449,16 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
             e.preventDefault();
             onOpenSettings();
           }}
-          className="px-2 py-1 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-[11px] font-mono text-amber-200 tabular-nums cursor-pointer"
-          title="Click to cycle clip duration (right-click for full settings)"
+          className={`px-2 py-1 rounded-lg border text-[11px] font-mono tabular-nums cursor-pointer transition-colors ${
+            settings.fullTrackMode
+              ? "bg-white/[0.03] border-white/[0.06] text-zinc-500 hover:text-zinc-300"
+              : "bg-white/[0.05] hover:bg-white/[0.1] border-white/[0.08] text-amber-200"
+          }`}
+          title={
+            settings.fullTrackMode
+              ? "Switch back to timed preview clips (right-click for full settings)"
+              : "Click to cycle clip duration (right-click for full settings)"
+          }
         >
           {settings.clipDurationSec}s
         </button>

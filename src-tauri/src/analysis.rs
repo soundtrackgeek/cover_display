@@ -362,6 +362,29 @@ pub fn analyze_track_preview(
     let has_timeline = timeline.is_some();
     let has_clap = !clap_windows.is_empty();
 
+    if settings.full_track_mode {
+        let start = custom_start_override
+            .map(|c| c.clamp(0.0, (effective_dur - 1.0).max(0.0)))
+            .unwrap_or(0.0);
+        let remaining = (effective_dur - start).max(1.0);
+        let reason = if custom_start_override.is_some() && start > 0.5 {
+            "Full Track · Continuing".to_string()
+        } else {
+            "Full Track".to_string()
+        };
+        return TrackPreviewPlan {
+            start_sec: start,
+            clip_duration_sec: remaining,
+            track_duration_sec: effective_dur,
+            reason,
+            envelope,
+            clap_windows,
+            loudness_db,
+            has_timeline,
+            has_clap,
+        };
+    }
+
     if let Some(custom) = custom_start_override {
         return TrackPreviewPlan {
             start_sec: custom.clamp(0.0, max_start),

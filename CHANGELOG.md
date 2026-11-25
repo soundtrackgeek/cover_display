@@ -5,6 +5,14 @@ All notable changes to Cover Display will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-11-25
+
+### Added
+- **Full Track Playback Mode**: Toggle `Full` in the player bar (or **Settings → Preview & Audio**) to let songs play continuously to the end without clip truncation. Switching into Full Track mode mid-preview seamlessly continues from the current playhead.
+- **Local Discovery Crate**: Save and collect albums while browsing (`B` shortcut or bookmark buttons in Cover Flow, Cover Wall, and the player bar), persisted locally in Cover Display's own config without modifying any read-only SQLite databases.
+- **Discovery Crate Drawer & Quick Filter**: Open the slide-over Crate drawer from the top bar to preview saved albums, filter the main view to your Crate (`Crate (N)` chip), or clear the Crate.
+- **Open Album Folder & `.m3u8` Playlist Export**: Reveal any album's folder directly in Explorer/Finder or export your entire Discovery Crate as a ready-to-play `Cover Display Crate.m3u8` playlist.
+
 ## [0.2.1] - 2026-11-21
 
 ### Fixed

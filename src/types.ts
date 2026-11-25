@@ -20,6 +20,7 @@ export interface AlbumFilter {
   minRating: number | null;
   lovedOnly: boolean;
   hasCoverOnly: boolean;
+  crateOnly: boolean;
   sortBy: string;
   similarToAlbumId: string | null;
   randomSeed: number;
@@ -34,6 +35,7 @@ export interface SavedFilterPreset {
 export interface AppSettings {
   libraryDir: string;
   clipDurationSec: number;
+  fullTrackMode: boolean;
   fadeMs: number;
   previewMode: PreviewMode;
   previewPercentage: number;
@@ -49,6 +51,7 @@ export interface AppSettings {
   autoPlayOnSelect: boolean;
   autoInstallUpdates: boolean;
   savedFilters: SavedFilterPreset[];
+  crateAlbumIds: string[];
 }
 
 export interface AlbumSummary {
@@ -162,6 +165,7 @@ export interface PlaybackState {
   level: number;
   volume: number;
   isPinned: boolean;
+  fullTrackMode: boolean;
   sourceView: string;
 }
 
@@ -175,6 +179,7 @@ export const DEFAULT_FILTER: AlbumFilter = {
   minRating: null,
   lovedOnly: false,
   hasCoverOnly: false,
+  crateOnly: false,
   sortBy: "artist_asc",
   similarToAlbumId: null,
   randomSeed: 0,

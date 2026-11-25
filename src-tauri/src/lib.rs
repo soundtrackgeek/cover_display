@@ -14,6 +14,8 @@ use library::{
 };
 use parking_lot::RwLock;
 use serde::Serialize;
+use std::collections::HashSet;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::http::{header, Response, StatusCode};
 use tauri::{Emitter, Manager, State};
@@ -95,8 +97,15 @@ async fn query_albums(
         None
     };
 
+    let crate_ids: HashSet<String> = state
+        .settings
+        .read()
+        .crate_album_ids
+        .iter()
+        .cloned()
+        .collect();
     let mut cat = state.catalog.write();
-    Ok(cat.apply_filter(&filter, similar_ranked))
+    Ok(cat.apply_filter(&filter, similar_ranked, &crate_ids))
 }
 
 #[tauri::command]
@@ -271,6 +280,159 @@ fn get_app_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
 
+#[tauri::command]
+fn toggle_crate_album(state: State<'_, AppState>, album_id: String) -> Result<Vec<String>, String> {
+    let mut cfg = state.settings.write();
+    if let Some(pos) = cfg.crate_album_ids.iter().position(|id| id == &album_id) {
+        cfg.crate_album_ids.remove(pos);
+    } else {
+        cfg.crate_album_ids.insert(0, album_id);
+    }
+    save_settings(&cfg)?;
+    Ok(cfg.crate_album_ids.clone())
+}
+
+#[tauri::command]
+fn clear_crate(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+    let mut cfg = state.settings.write();
+    cfg.crate_album_ids.clear();
+    save_settings(&cfg)?;
+    Ok(Vec::new())
+}
+
+#[tauri::command]
+fn get_crate_albums(state: State<'_, AppState>) -> Vec<AlbumSummary> {
+    let ids = state.settings.read().crate_album_ids.clone();
+    let cat = state.catalog.read();
+    ids.iter()
+        .filter_map(|id| cat.album_idx_by_id.get(id).map(|&idx| cat.albums[idx].clone()))
+        .collect()
+}
+
+fn reveal_in_file_manager(path: &std::path::Path, select_file: bool) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        let mut cmd = std::process::Command::new("explorer");
+        if select_file {
+            cmd.arg(format!("/select,{}", path.display()));
+        } else {
+            cmd.arg(path);
+        }
+        cmd.spawn()
+            .map_err(|e| format!("Failed to launch Explorer: {e}"))?;
+        return Ok(());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let mut cmd = std::process::Command::new("open");
+        if select_file {
+            cmd.arg("-R");
+        }
+        cmd.arg(path);
+        cmd.spawn()
+            .map_err(|e| format!("Failed to launch Finder: {e}"))?;
+        return Ok(());
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        let target = if select_file {
+            path.parent().unwrap_or(path)
+        } else {
+            path
+        };
+        std::process::Command::new("xdg-open")
+            .arg(target)
+            .spawn()
+            .map_err(|e| format!("Failed to open file manager: {e}"))?;
+        Ok(())
+    }
+}
+
+#[tauri::command]
+async fn open_album_folder(state: State<'_, AppState>, album_id: String) -> Result<(), String> {
+    let dir = state.settings.read().library_dir.clone();
+    let tracks = tokio::task::spawn_blocking(move || get_album_tracks(&dir, &album_id))
+        .await
+        .map_err(|e| format!("Task join error: {e}"))??;
+
+    if tracks.is_empty() {
+        return Err("No tracks found for this album.".to_string());
+    }
+
+    for tr in &tracks {
+        let full = PathBuf::from(&tr.file_path).join(&tr.filename);
+        if full.exists() {
+            return reveal_in_file_manager(&full, true);
+        }
+        let folder = PathBuf::from(&tr.file_path);
+        if folder.exists() {
+            return reveal_in_file_manager(&folder, false);
+        }
+    }
+
+    Err(format!(
+        "Album folder not found on disk: {}",
+        tracks[0].file_path
+    ))
+}
+
+#[tauri::command]
+async fn export_crate_m3u(state: State<'_, AppState>) -> Result<String, String> {
+    let (dir, ids) = {
+        let cfg = state.settings.read();
+        (cfg.library_dir.clone(), cfg.crate_album_ids.clone())
+    };
+    if ids.is_empty() {
+        return Err("Your Discovery Crate is empty.".to_string());
+    }
+
+    let out_path = tokio::task::spawn_blocking(move || -> Result<PathBuf, String> {
+        let mut lines = Vec::with_capacity(ids.len() * 12 + 1);
+        lines.push("#EXTM3U".to_string());
+
+        for album_id in &ids {
+            if let Ok(mut tracks) = get_album_tracks(&dir, album_id) {
+                tracks.sort_by(|a, b| {
+                    a.disc_number
+                        .cmp(&b.disc_number)
+                        .then_with(|| a.track_number.cmp(&b.track_number))
+                        .then_with(|| a.id.cmp(&b.id))
+                });
+                for tr in tracks {
+                    let full = PathBuf::from(&tr.file_path).join(&tr.filename);
+                    lines.push(format!(
+                        "#EXTINF:{},{} - {}",
+                        tr.time_seconds.max(0),
+                        tr.artist,
+                        tr.title
+                    ));
+                    lines.push(full.to_string_lossy().to_string());
+                }
+            }
+        }
+
+        if lines.len() <= 1 {
+            return Err("No tracks found for the albums in your Discovery Crate.".to_string());
+        }
+
+        let target_dir = dirs::audio_dir()
+            .or_else(dirs::desktop_dir)
+            .or_else(dirs::home_dir)
+            .unwrap_or_else(|| PathBuf::from("."));
+        let _ = std::fs::create_dir_all(&target_dir);
+        let file_path = target_dir.join("Cover Display Crate.m3u8");
+        let content = format!("{}\r\n", lines.join("\r\n"));
+        std::fs::write(&file_path, content)
+            .map_err(|e| format!("Failed to write playlist: {e}"))?;
+        Ok(file_path)
+    })
+    .await
+    .map_err(|e| format!("Export task failed: {e}"))??;
+
+    let _ = reveal_in_file_manager(&out_path, true);
+    Ok(out_path.to_string_lossy().to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let settings = load_settings();
@@ -394,6 +556,11 @@ pub fn run() {
             clear_cover_cache,
             rebuild_sonic_index,
             get_app_version,
+            toggle_crate_album,
+            clear_crate,
+            get_crate_albums,
+            open_album_folder,
+            export_crate_m3u,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Cover Display");
@@ -438,7 +605,8 @@ mod tests {
             sort_by: "year_asc".to_string(),
             ..Default::default()
         };
-        let synth_res = cat.apply_filter(&synth_filter, None);
+        let empty_crate = HashSet::new();
+        let synth_res = cat.apply_filter(&synth_filter, None, &empty_crate);
         println!(
             "80s Synthpop filter: {} albums in {:?}",
             synth_res.total_count,
@@ -453,7 +621,7 @@ mod tests {
             sort_by: "year_asc".to_string(),
             ..Default::default()
         };
-        let sabbath_res = cat.apply_filter(&sabbath_filter, None);
+        let sabbath_res = cat.apply_filter(&sabbath_filter, None, &empty_crate);
         println!(
             "Black Sabbath discography: {} albums in {:?}",
             sabbath_res.total_count,
@@ -507,7 +675,7 @@ mod tests {
             search: "Hunting High and Low".to_string(),
             ..Default::default()
         };
-        let aha_res = cat.apply_filter(&aha_filter, None);
+        let aha_res = cat.apply_filter(&aha_filter, None, &empty_crate);
         if let Some(aha_album) = aha_res.initial_items.first() {
             let aha_tracks = get_album_tracks(&dir, &aha_album.id).expect("a-ha tracks");
             let single_count = aha_tracks.iter().filter(|t| t.is_single).count();

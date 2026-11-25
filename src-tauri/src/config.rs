@@ -55,6 +55,8 @@ pub struct AlbumFilter {
     pub loved_only: bool,
     #[serde(default)]
     pub has_cover_only: bool,
+    #[serde(default)]
+    pub crate_only: bool,
     #[serde(default = "default_sort_by")]
     pub sort_by: String,
     #[serde(default)]
@@ -82,6 +84,8 @@ pub struct AppSettings {
     pub library_dir: String,
     #[serde(default = "default_clip_duration")]
     pub clip_duration_sec: u32,
+    #[serde(default)]
+    pub full_track_mode: bool,
     #[serde(default = "default_fade_ms")]
     pub fade_ms: u32,
     #[serde(default)]
@@ -112,6 +116,8 @@ pub struct AppSettings {
     pub auto_install_updates: bool,
     #[serde(default)]
     pub saved_filters: Vec<SavedFilterPreset>,
+    #[serde(default)]
+    pub crate_album_ids: Vec<String>,
 }
 
 pub fn default_library_dir() -> String {
@@ -160,6 +166,7 @@ impl Default for AppSettings {
         Self {
             library_dir: default_library_dir(),
             clip_duration_sec: default_clip_duration(),
+            full_track_mode: false,
             fade_ms: default_fade_ms(),
             preview_mode: PreviewMode::SmartHighlight,
             preview_percentage: default_preview_percentage(),
@@ -175,6 +182,7 @@ impl Default for AppSettings {
             auto_play_on_select: true,
             auto_install_updates: true,
             saved_filters: Vec::new(),
+            crate_album_ids: Vec::new(),
         }
     }
 }

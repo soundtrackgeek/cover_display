@@ -4,7 +4,7 @@ use rand::SeedableRng;
 use rusqlite::functions::FunctionFlags;
 use rusqlite::{Connection, OpenFlags};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -414,6 +414,7 @@ impl Catalog {
         &mut self,
         filter: &AlbumFilter,
         similar_ranked: Option<Vec<(String, f32)>>,
+        crate_ids: &HashSet<String>,
     ) -> QueryResult {
         self.active_query_id += 1;
         self.filtered_scores.clear();
@@ -458,6 +459,7 @@ impl Catalog {
                         &artist_lower,
                         &chart_mode,
                         filter,
+                        crate_ids,
                     ) {
                         indices.push(idx);
                         self.filtered_scores.insert(idx, score);
@@ -474,6 +476,7 @@ impl Catalog {
                     &artist_lower,
                     &chart_mode,
                     filter,
+                    crate_ids,
                 ) {
                     indices.push(idx);
                 }
@@ -602,7 +605,11 @@ impl Catalog {
         artist_lower: &Option<String>,
         chart_mode: &Option<String>,
         filter: &AlbumFilter,
+        crate_ids: &HashSet<String>,
     ) -> bool {
+        if filter.crate_only && !crate_ids.contains(&a.id) {
+            return false;
+        }
         if filter.has_cover_only && !a.has_cover {
             return false;
         }

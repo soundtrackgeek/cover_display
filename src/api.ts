@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   AlbumFilter,
+  AlbumSummary,
   AppSettings,
   ArtistSuggestion,
   CatalogOverview,
@@ -64,6 +65,13 @@ export const api = {
   clearCoverCache: () => invoke<number>("clear_cover_cache"),
   rebuildSonicIndex: () => invoke<number>("rebuild_sonic_index"),
   getAppVersion: () => invoke<string>("get_app_version"),
+  toggleCrateAlbum: (albumId: string) =>
+    invoke<string[]>("toggle_crate_album", { albumId }),
+  clearCrate: () => invoke<string[]>("clear_crate"),
+  getCrateAlbums: () => invoke<AlbumSummary[]>("get_crate_albums"),
+  openAlbumFolder: (albumId: string) =>
+    invoke<void>("open_album_folder", { albumId }),
+  exportCrateM3u: () => invoke<string>("export_crate_m3u"),
 };
 
 export function coverUrl(albumId: string, size: 256 | 640 = 256): string {
