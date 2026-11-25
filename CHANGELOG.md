@@ -5,6 +5,16 @@ All notable changes to Cover Display will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-11-25
+
+### Added
+- **Music TV / Lounge Overlays (`PartyLoungeOverlays`)** for Auto-Surf:
+  - **TV / Lounge Auto-Hide Chrome**: After 4 seconds of mouse/keyboard inactivity during Auto-Surf, the top bar, filter bar, player bar, Party HUD, and cursor smoothly fade away for an edge-to-edge full-window canvas—revealing a minimal bottom-left **Now Playing** corner HUD with a live `accentRgb` progress bar. Moving the mouse brings all controls back instantly.
+  - **Pre-Rolled "Up Next" Teaser Pill**: Pre-selects and prefetches the upcoming album (even in Random order) and slides a clickable **"Up Next"** teaser card with mini cover art and countdown into the bottom-right corner ~4.5 seconds before the clip ends.
+  - **Music-TV Pop-Up Trivia Tags**: Surfaces chart rankings (`Billboard`, `UK Official`, `VG-lista`), ratings, loved track counts, Discovery Crate status, and release year/label as a sleek pop-up tag whenever a new album lands.
+  - **Celebratory Crate Save Reaction**: Pressing `B` or clicking Crate during Auto-Surf pops a floating confirmation burst over the stage without interrupting the party flow.
+  - **Quick Toggle & Persistence**: Toggle `Lounge` in the floating Party HUD, press `L` during Auto-Surf, or configure **TV / Lounge Auto-Hide Chrome** in **Settings → Preview & Audio**.
+
 ## [0.8.0] - 2026-11-25
 
 ### Added

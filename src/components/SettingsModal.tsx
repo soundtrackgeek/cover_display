@@ -588,6 +588,25 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           className="accent-emerald-400"
                         />
                       </label>
+
+                      <label className="flex items-center justify-between text-xs text-zinc-300 cursor-pointer pt-1">
+                        <span>
+                          <span className="font-medium text-zinc-200">
+                            TV / Lounge Auto-Hide Chrome
+                          </span>{" "}
+                          <span className="text-zinc-500">
+                            — Fade UI chrome on idle with corner Now Playing &amp; Up Next teaser
+                          </span>
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={draft.autoSurfLoungeMode}
+                          onChange={(e) =>
+                            patch({ autoSurfLoungeMode: e.target.checked })
+                          }
+                          className="accent-emerald-400"
+                        />
+                      </label>
                     </div>
                   )}
                 </div>

@@ -125,6 +125,8 @@ pub struct AppSettings {
     #[serde(default = "default_true")]
     pub auto_surf_audio_reactive: bool,
     #[serde(default = "default_true")]
+    pub auto_surf_lounge_mode: bool,
+    #[serde(default = "default_true")]
     pub auto_install_updates: bool,
     #[serde(default)]
     pub saved_filters: Vec<SavedFilterPreset>,
@@ -210,6 +212,7 @@ impl Default for AppSettings {
             auto_surf_scene_mode: default_auto_surf_scene(),
             auto_surf_transition: default_auto_surf_transition(),
             auto_surf_audio_reactive: true,
+            auto_surf_lounge_mode: true,
             auto_install_updates: true,
             saved_filters: Vec::new(),
             crate_album_ids: Vec::new(),

@@ -471,3 +471,64 @@ input[type="range"].studio-range:hover::-webkit-slider-thumb {
 .party-scene-zoom {
   animation: partySceneZoomIn 0.58s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
+
+/* ==========================================================================
+   Music TV / Lounge Overlays
+   ========================================================================== */
+
+@keyframes partyTeaserSlideIn {
+  0% {
+    opacity: 0;
+    transform: translate3d(28px, 12px, 0) scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+.party-teaser-enter {
+  animation: partyTeaserSlideIn 0.48s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes partyTriviaSlideIn {
+  0% {
+    opacity: 0;
+    transform: translate3d(-24px, 0, 0) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+.party-trivia-enter {
+  animation: partyTriviaSlideIn 0.52s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes partyCrateBurst {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -40%) scale(0.65);
+  }
+  18% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.06);
+  }
+  30% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  80% {
+    opacity: 1;
+    transform: translate(-50%, -54%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -64%) scale(0.94);
+  }
+}
+
+.party-crate-burst {
+  animation: partyCrateBurst 1.65s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}

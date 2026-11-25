@@ -15,6 +15,7 @@ import {
   Shuffle,
   SkipForward,
   Sparkles,
+  Tv,
   X,
 } from "lucide-react";
 import { api } from "./api";
@@ -22,6 +23,7 @@ import { CoverFlowView } from "./components/CoverFlowView";
 import { CoverWallView } from "./components/CoverWallView";
 import { CrateDrawer } from "./components/CrateDrawer";
 import { FilterBar } from "./components/FilterBar";
+import { PartyLoungeOverlays } from "./components/PartyLoungeOverlays";
 import { PartyStageView } from "./components/PartyStageView";
 import { PartyVisualizer } from "./components/PartyVisualizer";
 import { PlayerBar } from "./components/PlayerBar";
@@ -86,6 +88,7 @@ const INITIAL_SETTINGS: AppSettings = {
   autoSurfSceneMode: "auto",
   autoSurfTransition: "auto",
   autoSurfAudioReactive: true,
+  autoSurfLoungeMode: true,
   autoInstallUpdates: true,
   savedFilters: [],
   crateAlbumIds: [],
@@ -149,10 +152,20 @@ export function App() {
   const [autoSurf, setAutoSurf] = useState(false);
   const [partySceneIdx, setPartySceneIdx] = useState(0);
   const [albumTransitionIdx, setAlbumTransitionIdx] = useState(0);
+  const [upNextIndex, setUpNextIndex] = useState<number | null>(null);
+  const [isLoungeIdle, setIsLoungeIdle] = useState(false);
+  const [crateBurst, setCrateBurst] = useState<{
+    id: number;
+    added: boolean;
+    albumTitle: string;
+  } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   const searchRef = useRef<HTMLInputElement>(null);
   const toastTimerRef = useRef<number | null>(null);
+  const crateBurstTimerRef = useRef<number | null>(null);
+  const upNextIndexRef = useRef<number | null>(null);
+  upNextIndexRef.current = upNextIndex;
 
   // Browser-style navigation history stack (Back / Forward)
   const historyRef = useRef<NavEntry[]>([
@@ -324,14 +337,16 @@ export function App() {
       if (!autoSurfRef.current) return;
       const count = totalCountRef.current;
       if (count <= 1) return;
-      let nextIdx: number;
-      if (autoSurfOrderRef.current === "random") {
-        nextIdx = Math.floor(Math.random() * count);
-        if (nextIdx === selectedIndexRef.current) {
-          nextIdx = (nextIdx + 1) % count;
+      let nextIdx = upNextIndexRef.current;
+      if (nextIdx == null || nextIdx < 0 || nextIdx >= count || nextIdx === selectedIndexRef.current) {
+        if (autoSurfOrderRef.current === "random") {
+          nextIdx = Math.floor(Math.random() * count);
+          if (nextIdx === selectedIndexRef.current) {
+            nextIdx = (nextIdx + 1) % count;
+          }
+        } else {
+          nextIdx = (selectedIndexRef.current + 1) % count;
         }
-      } else {
-        nextIdx = (selectedIndexRef.current + 1) % count;
       }
       ensureRange(nextIdx - 24, nextIdx + 24);
       setSelectedIndex(nextIdx);
@@ -356,6 +371,50 @@ export function App() {
       ? PARTY_TRANSITIONS[albumTransitionIdx % PARTY_TRANSITIONS.length]
       : settings.autoSurfTransition;
   const effectiveStage: PartyScene = partyActive ? activePartyScene : view;
+
+  // Pre-roll and prefetch the upcoming Auto-Surf album so "Up Next" matches exact playback
+  useEffect(() => {
+    if (!autoSurf || totalCount <= 1) {
+      setUpNextIndex(null);
+      return;
+    }
+    let nextIdx: number;
+    if (settings.autoSurfOrder === "random") {
+      nextIdx = Math.floor(Math.random() * totalCount);
+      if (nextIdx === selectedIndex) {
+        nextIdx = (nextIdx + 1) % totalCount;
+      }
+    } else {
+      nextIdx = (selectedIndex + 1) % totalCount;
+    }
+    setUpNextIndex(nextIdx);
+    ensureRange(nextIdx - 4, nextIdx + 4);
+  }, [autoSurf, selectedIndex, totalCount, settings.autoSurfOrder, queryId, ensureRange]);
+
+  // TV / Lounge Mode: auto-hide UI chrome after 4s of inactivity during Auto-Surf
+  useEffect(() => {
+    if (!autoSurf || !settings.autoSurfLoungeMode || settingsOpen || crateOpen) {
+      setIsLoungeIdle(false);
+      return;
+    }
+    let timer = window.setTimeout(() => setIsLoungeIdle(true), 4000);
+    const wake = () => {
+      setIsLoungeIdle(false);
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => setIsLoungeIdle(true), 4000);
+    };
+    window.addEventListener("mousemove", wake, { passive: true });
+    window.addEventListener("mousedown", wake, { passive: true });
+    window.addEventListener("wheel", wake, { passive: true });
+    window.addEventListener("keydown", wake, { passive: true });
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("mousemove", wake);
+      window.removeEventListener("mousedown", wake);
+      window.removeEventListener("wheel", wake);
+      window.removeEventListener("keydown", wake);
+    };
+  }, [autoSurf, settings.autoSurfLoungeMode, settingsOpen, crateOpen]);
 
   // When Auto-Surf is active outside Cover Flow (Wall or Party Stage), auto-play the focused album
   useEffect(() => {
@@ -450,16 +509,38 @@ export function App() {
   const handleToggleCrate = useCallback(
     (albumId: string) => {
       const wasIn = crateSet.has(albumId);
+      const currentAlbumObj = getAlbum(selectedIndexRef.current).album;
+      const labelTitle =
+        currentAlbumObj?.id === albumId
+          ? `${currentAlbumObj.artist} — ${currentAlbumObj.album}`
+          : playback.albumId === albumId
+          ? `${playback.albumArtist} — ${playback.albumTitle}`
+          : "Discovery Crate";
+
       api
         .toggleCrateAlbum(albumId)
         .then((nextIds) => {
           setSettings((prev) => ({ ...prev, crateAlbumIds: nextIds }));
-          showToast(wasIn ? "Removed from Discovery Crate" : "Saved to Discovery Crate");
+          if (autoSurfRef.current) {
+            setCrateBurst({
+              id: Date.now(),
+              added: !wasIn,
+              albumTitle: labelTitle,
+            });
+            if (crateBurstTimerRef.current) {
+              window.clearTimeout(crateBurstTimerRef.current);
+            }
+            crateBurstTimerRef.current = window.setTimeout(() => {
+              setCrateBurst(null);
+            }, 1750);
+          } else {
+            showToast(wasIn ? "Removed from Discovery Crate" : "Saved to Discovery Crate");
+          }
           setFilter((f) => (f.crateOnly ? { ...f } : f));
         })
         .catch((err) => showToast(`Crate error: ${String(err)}`));
     },
-    [crateSet, showToast]
+    [crateSet, getAlbum, playback.albumId, playback.albumArtist, playback.albumTitle, showToast]
   );
 
   const handleClearCrate = useCallback(() => {
@@ -686,6 +767,18 @@ export function App() {
           );
           return next;
         });
+      } else if ((e.key === "l" || e.key === "L") && autoSurfRef.current) {
+        e.preventDefault();
+        setSettings((prev) => {
+          const next = { ...prev, autoSurfLoungeMode: !prev.autoSurfLoungeMode };
+          void api.updateSettings(next);
+          showToast(
+            next.autoSurfLoungeMode
+              ? "TV / Lounge Auto-Hide ON"
+              : "TV / Lounge Auto-Hide OFF"
+          );
+          return next;
+        });
       } else if (e.key === "b" || e.key === "B") {
         const targetId =
           effectiveStage !== "wall"
@@ -821,8 +914,40 @@ export function App() {
     setView("coverflow");
   }, []);
 
+  const currentSurfAlbum = getAlbum(selectedIndex).album;
+  const upNextSurfAlbum = upNextIndex != null ? getAlbum(upNextIndex).album : null;
+
+  const handleJumpUpNext = useCallback(() => {
+    if (upNextIndex == null || totalCount <= 1) return;
+    ensureRange(upNextIndex - 24, upNextIndex + 24);
+    setSelectedIndex(upNextIndex);
+    setWallScrollNonce((n) => n + 1);
+    setAlbumTransitionIdx((n) => n + 1);
+    if (settings.autoSurfPartyMode && settings.autoSurfSceneMode === "auto") {
+      setPartySceneIdx((n) => (n + 1) % PARTY_SCENES.length);
+    }
+  }, [
+    upNextIndex,
+    totalCount,
+    ensureRange,
+    settings.autoSurfPartyMode,
+    settings.autoSurfSceneMode,
+  ]);
+
   return (
-    <div className="w-full h-full flex flex-col bg-[#09090d] text-zinc-100 overflow-hidden">
+    <div
+      className={`w-full h-full flex flex-col bg-[#09090d] text-zinc-100 overflow-hidden ${
+        isLoungeIdle ? "cursor-none" : ""
+      }`}
+    >
+      {/* Collapsible Top Chrome (auto-hides in TV / Lounge idle mode) */}
+      <div
+        className={`transition-all duration-500 ease-out shrink-0 ${
+          isLoungeIdle
+            ? "max-h-0 opacity-0 overflow-hidden pointer-events-none"
+            : "max-h-40 opacity-100"
+        }`}
+      >
       {/* Studio Top Bar */}
       <header className="relative z-40 h-14 px-5 border-b border-white/[0.07] bg-[#0b0c12]/90 backdrop-blur-2xl flex items-center justify-between gap-4">
         {/* Brand & View Mode Switcher */}
@@ -1015,12 +1140,19 @@ export function App() {
         loadingSimilar={loadingSimilar}
         crateCount={settings.crateAlbumIds.length}
       />
+      </div>
 
       {/* Main Content Stage: Cover Flow, Cover Wall, or Auto-Surf Party Scenes */}
       <main className="relative flex-1 flex flex-col overflow-hidden">
         {/* Floating Auto-Surf Party Scene HUD */}
         {autoSurf && totalCount > 0 && (
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 px-2.5 py-1.5 rounded-full glass-panel shadow-2xl border border-emerald-400/25">
+          <div
+            className={`absolute top-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 px-2.5 py-1.5 rounded-full glass-panel shadow-2xl border border-emerald-400/25 transition-all duration-500 ${
+              isLoungeIdle
+                ? "opacity-0 -translate-y-4 pointer-events-none"
+                : "opacity-100 translate-y-0"
+            }`}
+          >
             <button
               onClick={() =>
                 handleQuickUpdateSettings({
@@ -1098,6 +1230,23 @@ export function App() {
                 >
                   <AudioLines className="w-3 h-3" />
                   Pulse
+                </button>
+
+                <button
+                  onClick={() =>
+                    handleQuickUpdateSettings({
+                      autoSurfLoungeMode: !settings.autoSurfLoungeMode,
+                    })
+                  }
+                  className={`flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-medium transition-colors cursor-pointer ${
+                    settings.autoSurfLoungeMode
+                      ? "bg-sky-500/20 border-sky-400/40 text-sky-200"
+                      : "bg-white/[0.04] border-white/10 text-zinc-400 hover:text-white"
+                  }`}
+                  title="Toggle TV / Lounge auto-hide chrome on idle (L)"
+                >
+                  <Tv className="w-3 h-3" />
+                  Lounge
                 </button>
               </>
             )}
@@ -1213,7 +1362,28 @@ export function App() {
         )}
       </main>
 
-      {/* Studio Preview Deck */}
+      {/* Music TV / Lounge Overlays (Auto-Hide HUD, Up Next Teaser, Pop-Up Trivia, Crate Burst) */}
+      {autoSurf && (
+        <PartyLoungeOverlays
+          currentAlbum={currentSurfAlbum}
+          upNextAlbum={upNextSurfAlbum}
+          playback={playback}
+          accentRgb={accentRgb}
+          isLoungeIdle={isLoungeIdle}
+          isCrated={currentSurfAlbum != null && crateSet.has(currentSurfAlbum.id)}
+          crateBurst={crateBurst}
+          onJumpUpNext={handleJumpUpNext}
+        />
+      )}
+
+      {/* Collapsible Studio Preview Deck (auto-hides in TV / Lounge idle mode) */}
+      <div
+        className={`transition-all duration-500 ease-out shrink-0 ${
+          isLoungeIdle
+            ? "max-h-0 opacity-0 overflow-hidden pointer-events-none"
+            : "max-h-32 opacity-100"
+        }`}
+      >
       <PlayerBar
         playback={playback}
         settings={settings}
@@ -1223,6 +1393,7 @@ export function App() {
         onToggleCrate={handleToggleCrate}
         onOpenFolder={handleOpenFolder}
       />
+      </div>
 
       {/* Discovery Crate Slide-Over Drawer */}
       <CrateDrawer

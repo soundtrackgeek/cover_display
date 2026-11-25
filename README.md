@@ -21,7 +21,7 @@ A fast, studio-grade desktop music library cover browser and audio preview playe
   - **CLAP Best Window**, **Start**, **Middle**, **Custom Percentage**, and **Fixed Offset** (`0:30`, `1:00`, `1:30`, `2:00`, or any custom timestamp).
   - **Play Singles First (MusicBrainz + Charts)**: Prioritizes each album's MusicBrainz `track_singles` and charted single tracks ahead of the rest of the album (with quick toggle in the player bar, Settings control, and `SINGLE` badges in tracklists).
   - **Full Track Playback Mode**: One-click `Full` toggle in the player bar lets any track continue playing cleanly to the end without clip cutoff.
-  - **Hands-Free Auto-Surf & Rotating Party Views**: Toggle `Auto-Surf` (`S`) to preview 1–5 highlights per album and automatically glide to the next (or random) album while cycling through 5 animated **Party Views** (**Cinema Spotlight**, **Vinyl Turntable**, **Floating Parallax Mosaic**, **Cover Flow Spin**, and **Cover Wall Spotlight**) with choreographed outgoing/incoming **Album Transitions** (**3D Card Flip**, **Crate Toss**, **Shutter Wipe**, and audio-fade-synced **Color Wash**) and a 60fps **Audio-Reactive Visualizer** (mirrored horizon spectrum bars, vinyl radial pulse ring & beat shockwaves, dual-tone aurora orbs, and reactive cover lift). Press `V` to cycle scenes, `T` to cycle transitions, or `A` to toggle audio-reactive effects.
+  - **Hands-Free Auto-Surf, Party Views & Music-TV Lounge Mode**: Toggle `Auto-Surf` (`S`) to preview 1–5 highlights per album while cycling through 5 animated **Party Views** (**Cinema Spotlight**, **Vinyl Turntable**, **Floating Parallax Mosaic**, **Cover Flow Spin**, and **Cover Wall Spotlight**) with choreographed **Album Transitions** (**3D Card Flip**, **Crate Toss**, **Shutter Wipe**, **Color Wash**), a 60fps **Audio-Reactive Visualizer**, and **TV / Lounge Overlays** (auto-hiding chrome & cursor on idle, minimal corner Now Playing HUD, pre-rolled **"Up Next" teaser pill**, Music-TV pop-up trivia tags, and celebratory Crate save bursts). Press `V` (scenes), `T` (transitions), `A` (audio pulse), or `L` (Lounge auto-hide).
   - **Studio-Smooth Audio Engine**: Persistent read-only SQLite connections on the audio thread, click-free cosine fade transitions on track switch/scrub, and clear inline feedback if an album's files are offline or unavailable.
   - Interactive **64-bar Energy Timeline Waveform** in the bottom player dock showing the active clip window and CLAP anchor markers—click anywhere to scrub.
 - **Local Discovery Crate & File Actions**
@@ -69,6 +69,7 @@ All databases are opened strictly **read-only** (`SQLITE_OPEN_READ_ONLY` + `PRAG
 | `V` | Cycle active Auto-Surf Party View scene |
 | `T` | Cycle Auto-Surf album transition effect (`Mix`, `3D Flip`, `Toss`, `Wipe`, `Wash`) |
 | `A` | Toggle Auto-Surf audio-reactive visualizer & beat glow |
+| `L` | Toggle TV / Lounge auto-hide chrome during Auto-Surf |
 | `B` | Save / remove active album in Discovery Crate |
 | `Esc` | Unpin locked album in Cover Wall / close Crate drawer |
 
