@@ -243,6 +243,14 @@ fn playback_set_pinned(state: State<'_, AppState>, pinned: bool) {
 }
 
 #[tauri::command]
+fn playback_set_auto_surf(state: State<'_, AppState>, enabled: bool, tracks_per_album: u32) {
+    state.audio.send(AudioCommand::SetAutoSurf {
+        enabled,
+        tracks_per_album,
+    });
+}
+
+#[tauri::command]
 fn playback_set_volume(state: State<'_, AppState>, volume: f32) -> Result<(), String> {
     let clamped = volume.clamp(0.0, 1.0);
     {
@@ -551,6 +559,7 @@ pub fn run() {
             playback_prev_track,
             playback_stop,
             playback_set_pinned,
+            playback_set_auto_surf,
             playback_set_volume,
             get_playback_state,
             clear_cover_cache,

@@ -1,4 +1,4 @@
-use crate::analysis::{analyze_track_preview, TrackPreviewPlan};
+use crate::analysis::{analyze_track_preview_cached, AnalysisDbCache, TrackPreviewPlan};
 use crate::config::{AppSettings, TrackOrder};
 use crate::library::{AlbumSummary, TrackInfo};
 use crossbeam_channel::{unbounded, Receiver, Sender};
@@ -38,6 +38,7 @@ pub struct PlaybackState {
     pub volume: f32,
     pub is_pinned: bool,
     pub full_track_mode: bool,
+    pub error_message: Option<String>,
     pub source_view: String, // "coverflow" | "wall"
 }
 
@@ -66,6 +67,7 @@ impl Default for PlaybackState {
             volume: 0.85,
             is_pinned: false,
             full_track_mode: false,
+            error_message: None,
             source_view: "coverflow".to_string(),
         }
     }
@@ -93,6 +95,10 @@ pub enum AudioCommand {
         settings: AppSettings,
     },
     SetPinned(bool),
+    SetAutoSurf {
+        enabled: bool,
+        tracks_per_album: u32,
+    },
     SetVolume(f32),
     UpdateSettings(AppSettings),
     Stop {
@@ -184,7 +190,7 @@ where
             let fade_samples = ((fade_sec * sample_rate as f32) as u64) * channels as u64;
             (fade_samples, fade_samples)
         };
-        let early_fade_samples = ((0.18 * sample_rate as f32) as u64) * channels as u64;
+        let early_fade_samples = ((0.085 * sample_rate as f32) as u64) * channels as u64;
 
         Self {
             inner,
@@ -396,6 +402,10 @@ fn audio_actor_loop(app: AppHandle, rx: Receiver<AudioCommand>, mut settings: Ap
     let mut elapsed_samples = Arc::new(AtomicU64::new(0));
     let mut current_sample_rate: u32 = 44100;
     let mut last_emit = Instant::now();
+    let mut db_cache = AnalysisDbCache::default();
+    let mut auto_surf_enabled = false;
+    let mut auto_surf_tracks_per_album = settings.auto_surf_tracks_per_album.clamp(1, 10);
+    let mut tracks_played_on_album: u32 = 0;
 
     let emit_state = |st: &PlaybackState| {
         let _ = app.emit("playback-state", st);
@@ -407,41 +417,70 @@ fn audio_actor_loop(app: AppHandle, rx: Receiver<AudioCommand>, mut settings: Ap
                        level_bits: &mut Arc<AtomicU32>,
                        elapsed_samples: &mut Arc<AtomicU64>,
                        current_sample_rate: &mut u32,
+                       db_cache: &mut AnalysisDbCache,
                        idx: usize,
                        custom_start: Option<f32>,
-                       cfg: &AppSettings| {
-        // Softly stop any previous sink
-        early_stop.store(true, Ordering::Relaxed);
-        if let Some(old_sink) = sink.take() {
-            old_sink.stop();
+                       cfg: &AppSettings|
+     -> bool {
+        // Trigger soft cosine fade-out on previous sink while we prepare the next track
+        let had_active_audio = sink
+            .as_ref()
+            .map(|s| !s.is_paused() && !s.empty())
+            .unwrap_or(false);
+        let fade_started_at = Instant::now();
+        if had_active_audio {
+            early_stop.store(true, Ordering::Relaxed);
         }
 
+        let stop_old_sink = |sink: &mut Option<Sink>, had_audio: bool, started: Instant| {
+            if let Some(old_sink) = sink.take() {
+                if had_audio {
+                    let elapsed = started.elapsed();
+                    let min_fade = Duration::from_millis(65);
+                    if elapsed < min_fade {
+                        std::thread::sleep(min_fade - elapsed);
+                    }
+                }
+                old_sink.stop();
+            }
+        };
+
         if state.tracks.is_empty() {
+            stop_old_sink(sink, had_active_audio, fade_started_at);
             state.status = "idle".to_string();
             state.track = None;
             state.level = 0.0;
-            return;
+            state.error_message = Some("No tracks found for this album".to_string());
+            return false;
         }
 
         let Some(ref handle) = stream_handle else {
+            stop_old_sink(sink, had_active_audio, fade_started_at);
             state.status = "idle".to_string();
-            return;
+            state.error_message = Some("No audio output device available".to_string());
+            return false;
         };
 
         // Try tracks starting at idx (skipping missing/unreadable files gracefully)
         let total = state.tracks.len();
+        let mut saw_missing = false;
+        let mut saw_decode_err = false;
+
         for attempt in 0..total.min(4) {
             let try_idx = (idx + attempt) % total;
             let track = state.tracks[try_idx].clone();
             let full_path = build_track_path(&track);
             let Ok(file) = File::open(&full_path) else {
+                saw_missing = true;
                 continue;
             };
             let Ok(mut decoder) = Decoder::new(BufReader::new(file)) else {
+                saw_decode_err = true;
                 continue;
             };
 
-            let plan: TrackPreviewPlan = analyze_track_preview(
+            let plan: TrackPreviewPlan = analyze_track_preview_cached(
+                db_cache,
                 &cfg.library_dir,
                 &track.file_path,
                 &track.filename,
@@ -484,6 +523,10 @@ fn audio_actor_loop(app: AppHandle, rx: Receiver<AudioCommand>, mut settings: Ap
                 continue;
             };
             new_sink.set_volume(state.volume);
+
+            // Finish soft fade-out of the old sink right before starting the new one
+            stop_old_sink(sink, had_active_audio, fade_started_at);
+
             new_sink.append(source);
 
             *early_stop = new_early;
@@ -505,12 +548,22 @@ fn audio_actor_loop(app: AppHandle, rx: Receiver<AudioCommand>, mut settings: Ap
             state.has_timeline = plan.has_timeline;
             state.has_clap = plan.has_clap;
             state.full_track_mode = cfg.full_track_mode;
+            state.error_message = None;
             state.level = 0.0;
-            return;
+            return true;
         }
 
+        stop_old_sink(sink, had_active_audio, fade_started_at);
         state.status = "idle".to_string();
         state.level = 0.0;
+        state.error_message = Some(if saw_missing && !saw_decode_err {
+            "Audio files unavailable (offline or moved)".to_string()
+        } else if saw_decode_err {
+            "Unable to decode album audio".to_string()
+        } else {
+            "Audio playback unavailable".to_string()
+        });
+        false
     };
 
     loop {
@@ -534,20 +587,25 @@ fn audio_actor_loop(app: AppHandle, rx: Receiver<AudioCommand>, mut settings: Ap
                     state.total_tracks = state.tracks.len();
                     state.is_pinned = is_pinned;
                     state.source_view = source_view;
+                    tracks_played_on_album = 0;
                     let idx = start_track_index.min(state.tracks.len().saturating_sub(1));
-                    start_track(
+                    let started = start_track(
                         &mut state,
                         &mut sink,
                         &mut early_stop,
                         &mut level_bits,
                         &mut elapsed_samples,
                         &mut current_sample_rate,
+                        &mut db_cache,
                         idx,
                         None,
                         &settings,
                     );
                     emit_state(&state);
                     last_emit = Instant::now();
+                    if !started && auto_surf_enabled && !state.is_pinned {
+                        let _ = app.emit("auto-surf-advance", state.album_id.clone());
+                    }
                 }
                 AudioCommand::PlayTrackAt {
                     track_index,
@@ -565,6 +623,7 @@ fn audio_actor_loop(app: AppHandle, rx: Receiver<AudioCommand>, mut settings: Ap
                             &mut level_bits,
                             &mut elapsed_samples,
                             &mut current_sample_rate,
+                            &mut db_cache,
                             idx,
                             custom_start_sec,
                             &settings,
@@ -597,6 +656,7 @@ fn audio_actor_loop(app: AppHandle, rx: Receiver<AudioCommand>, mut settings: Ap
                             &mut level_bits,
                             &mut elapsed_samples,
                             &mut current_sample_rate,
+                            &mut db_cache,
                             next_idx,
                             None,
                             &settings,
@@ -620,6 +680,7 @@ fn audio_actor_loop(app: AppHandle, rx: Receiver<AudioCommand>, mut settings: Ap
                             &mut level_bits,
                             &mut elapsed_samples,
                             &mut current_sample_rate,
+                            &mut db_cache,
                             prev_idx,
                             None,
                             &settings,
@@ -631,6 +692,14 @@ fn audio_actor_loop(app: AppHandle, rx: Receiver<AudioCommand>, mut settings: Ap
                 AudioCommand::SetPinned(pinned) => {
                     state.is_pinned = pinned;
                     emit_state(&state);
+                }
+                AudioCommand::SetAutoSurf {
+                    enabled,
+                    tracks_per_album,
+                } => {
+                    auto_surf_enabled = enabled;
+                    auto_surf_tracks_per_album = tracks_per_album.clamp(1, 10);
+                    tracks_played_on_album = 0;
                 }
                 AudioCommand::SetVolume(vol) => {
                     let clamped = vol.clamp(0.0, 1.0);
@@ -652,6 +721,7 @@ fn audio_actor_loop(app: AppHandle, rx: Receiver<AudioCommand>, mut settings: Ap
                         || settings.preview_fixed_offset_sec != new_cfg.preview_fixed_offset_sec
                         || settings.normalize_loudness != new_cfg.normalize_loudness;
                     let switching_into_full = full_changed && new_cfg.full_track_mode;
+                    auto_surf_tracks_per_album = new_cfg.auto_surf_tracks_per_album.clamp(1, 10);
                     settings = new_cfg;
                     state.volume = settings.volume;
                     state.full_track_mode = settings.full_track_mode;
@@ -682,6 +752,7 @@ fn audio_actor_loop(app: AppHandle, rx: Receiver<AudioCommand>, mut settings: Ap
                             &mut level_bits,
                             &mut elapsed_samples,
                             &mut current_sample_rate,
+                            &mut db_cache,
                             idx,
                             continue_from,
                             &settings,
@@ -696,7 +767,7 @@ fn audio_actor_loop(app: AppHandle, rx: Receiver<AudioCommand>, mut settings: Ap
                     early_stop.store(true, Ordering::Relaxed);
                     // Brief soft fade-out wait so hovering off covers sounds lush, never clicks
                     if sink.is_some() {
-                        std::thread::sleep(Duration::from_millis(90));
+                        std::thread::sleep(Duration::from_millis(80));
                     }
                     if let Some(s) = sink.take() {
                         s.stop();
@@ -704,6 +775,7 @@ fn audio_actor_loop(app: AppHandle, rx: Receiver<AudioCommand>, mut settings: Ap
                     state.status = "idle".to_string();
                     state.level = 0.0;
                     state.is_pinned = false;
+                    state.error_message = None;
                     emit_state(&state);
                 }
                 AudioCommand::GetState(reply) => {
@@ -711,11 +783,21 @@ fn audio_actor_loop(app: AppHandle, rx: Receiver<AudioCommand>, mut settings: Ap
                 }
             },
             Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
-                // Periodic progress check & auto-advance to next track in album!
+                // Periodic progress check & auto-advance to next track (or next album in Auto-Surf!)
                 if state.status == "playing" {
                     let finished = sink.as_ref().map(|s| s.empty()).unwrap_or(true);
                     if finished {
-                        if state.tracks.len() > 1 {
+                        tracks_played_on_album = tracks_played_on_album.saturating_add(1);
+                        if auto_surf_enabled
+                            && !state.is_pinned
+                            && tracks_played_on_album >= auto_surf_tracks_per_album
+                        {
+                            state.status = "idle".to_string();
+                            state.level = 0.0;
+                            emit_state(&state);
+                            let _ = app.emit("auto-surf-advance", state.album_id.clone());
+                            last_emit = Instant::now();
+                        } else if state.tracks.len() > 1 {
                             let next_idx = (state.track_index + 1) % state.tracks.len();
                             start_track(
                                 &mut state,
@@ -724,6 +806,7 @@ fn audio_actor_loop(app: AppHandle, rx: Receiver<AudioCommand>, mut settings: Ap
                                 &mut level_bits,
                                 &mut elapsed_samples,
                                 &mut current_sample_rate,
+                                &mut db_cache,
                                 next_idx,
                                 None,
                                 &settings,
@@ -739,6 +822,7 @@ fn audio_actor_loop(app: AppHandle, rx: Receiver<AudioCommand>, mut settings: Ap
                                 &mut level_bits,
                                 &mut elapsed_samples,
                                 &mut current_sample_rate,
+                                &mut db_cache,
                                 0,
                                 None,
                                 &settings,

@@ -112,6 +112,10 @@ pub struct AppSettings {
     pub wall_gap: u32,
     #[serde(default = "default_true")]
     pub auto_play_on_select: bool,
+    #[serde(default = "default_auto_surf_tracks")]
+    pub auto_surf_tracks_per_album: u32,
+    #[serde(default = "default_auto_surf_order")]
+    pub auto_surf_order: String,
     #[serde(default = "default_true")]
     pub auto_install_updates: bool,
     #[serde(default)]
@@ -160,6 +164,12 @@ fn default_wall_tile_size() -> u32 {
 fn default_wall_gap() -> u32 {
     6
 }
+fn default_auto_surf_tracks() -> u32 {
+    1
+}
+fn default_auto_surf_order() -> String {
+    "sequential".to_string()
+}
 
 impl Default for AppSettings {
     fn default() -> Self {
@@ -180,6 +190,8 @@ impl Default for AppSettings {
             wall_tile_size: default_wall_tile_size(),
             wall_gap: default_wall_gap(),
             auto_play_on_select: true,
+            auto_surf_tracks_per_album: default_auto_surf_tracks(),
+            auto_surf_order: default_auto_surf_order(),
             auto_install_updates: true,
             saved_filters: Vec::new(),
             crate_album_ids: Vec::new(),
@@ -212,6 +224,10 @@ pub fn load_settings() -> AppSettings {
             parsed.volume = parsed.volume.clamp(0.0, 1.0);
             parsed.wall_tile_size = parsed.wall_tile_size.clamp(96, 320);
             parsed.wall_gap = parsed.wall_gap.min(24);
+            parsed.auto_surf_tracks_per_album = parsed.auto_surf_tracks_per_album.clamp(1, 10);
+            if parsed.auto_surf_order != "sequential" && parsed.auto_surf_order != "random" {
+                parsed.auto_surf_order = "sequential".to_string();
+            }
             return parsed;
         }
     }

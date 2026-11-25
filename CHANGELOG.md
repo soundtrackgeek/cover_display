@@ -5,6 +5,16 @@ All notable changes to Cover Display will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-11-25
+
+### Added
+- **Hands-Free Auto-Surf Mode**: Toggle **Auto-Surf** (`S` shortcut or top-bar button) to preview a configurable number of tracks per album (1, 2, 3, or 5) and automatically glide to the next (or random) album in Cover Flow or Cover Wall.
+- **Audio Unavailable Feedback**: Displays a clear status message in the player bar when an album's audio files are offline, moved, or unreadable instead of silently stopping.
+
+### Changed
+- **Faster Smart Highlight Lookups**: Reuses persistent read-only SQLite connections (`AnalysisDbCache`) on the Rust audio thread instead of reopening `music-analysis`, `music-clap`, and `music-timelines` on every track start.
+- **Click-Free Track & Scrub Transitions**: Overlaps an 85ms cosine early fade-out while preparing the next track or waveform scrub position so transitions never pop or click.
+
 ## [0.4.0] - 2026-11-25
 
 ### Added

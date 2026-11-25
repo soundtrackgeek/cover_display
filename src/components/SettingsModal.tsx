@@ -441,6 +441,58 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </label>
                 </div>
               </div>
+
+              {/* Hands-Free Auto-Surf Jukebox */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-white/[0.06]">
+                <div className="space-y-2">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-zinc-300 font-medium">Auto-Surf Clips per Album</span>
+                    <span className="font-mono text-amber-300 tabular-nums">
+                      {draft.autoSurfTracksPerAlbum}{" "}
+                      {draft.autoSurfTracksPerAlbum === 1 ? "track" : "tracks"}
+                    </span>
+                  </div>
+                  <div className="flex gap-1.5">
+                    {[1, 2, 3, 5].map((n) => (
+                      <button
+                        key={n}
+                        onClick={() => patch({ autoSurfTracksPerAlbum: n })}
+                        className={`flex-1 py-1 rounded-lg text-xs font-mono border cursor-pointer ${
+                          draft.autoSurfTracksPerAlbum === n
+                            ? "bg-amber-400/20 border-amber-400/50 text-amber-100"
+                            : "bg-white/[0.04] border-white/[0.06] text-zinc-400 hover:text-white"
+                        }`}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="text-xs font-medium text-zinc-300">Auto-Surf Order</div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {(
+                      [
+                        { id: "sequential", label: "Next Album" },
+                        { id: "random", label: "Random Album" },
+                      ] as const
+                    ).map((opt) => (
+                      <button
+                        key={opt.id}
+                        onClick={() => patch({ autoSurfOrder: opt.id })}
+                        className={`py-1.5 px-2 rounded-lg text-xs border cursor-pointer ${
+                          draft.autoSurfOrder === opt.id
+                            ? "bg-amber-400/20 border-amber-400/50 text-amber-100"
+                            : "bg-white/[0.04] border-white/[0.06] text-zinc-400 hover:text-white"
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </>
           )}
 

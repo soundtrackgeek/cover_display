@@ -21,6 +21,8 @@ A fast, studio-grade desktop music library cover browser and audio preview playe
   - **CLAP Best Window**, **Start**, **Middle**, **Custom Percentage**, and **Fixed Offset** (`0:30`, `1:00`, `1:30`, `2:00`, or any custom timestamp).
   - **Play Singles First (MusicBrainz + Charts)**: Prioritizes each album's MusicBrainz `track_singles` and charted single tracks ahead of the rest of the album (with quick toggle in the player bar, Settings control, and `SINGLE` badges in tracklists).
   - **Full Track Playback Mode**: One-click `Full` toggle in the player bar lets any track continue playing cleanly to the end without clip cutoff.
+  - **Hands-Free Auto-Surf Mode**: Toggle `Auto-Surf` (`S`) to preview 1–5 highlights per album and automatically glide to the next (or random) album across your current filter or vibe.
+  - **Studio-Smooth Audio Engine**: Persistent read-only SQLite connections on the audio thread, click-free cosine fade transitions on track switch/scrub, and clear inline feedback if an album's files are offline or unavailable.
   - Interactive **64-bar Energy Timeline Waveform** in the bottom player dock showing the active clip window and CLAP anchor markers—click anywhere to scrub.
 - **Local Discovery Crate & File Actions**
   - Press `B` or click the bookmark button on any cover (in Cover Flow, Cover Wall, or the player bar) to collect albums in a local **Discovery Crate** stored in Cover Display's own config—never touching your read-only SQLite databases.
@@ -63,6 +65,7 @@ All databases are opened strictly **read-only** (`SQLITE_OPEN_READ_ONLY` + `PRAG
 | `Alt+←` / `Alt+→` | Navigate Back / Forward through filter & browsing history (also Mouse Back/Forward) |
 | `/` | Focus search bar |
 | `R` | Jump to a random album |
+| `S` | Toggle hands-free Auto-Surf jukebox mode |
 | `B` | Save / remove active album in Discovery Crate |
 | `Esc` | Unpin locked album in Cover Wall / close Crate drawer |
 

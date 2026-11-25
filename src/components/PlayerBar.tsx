@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useState } from "react";
 import {
+  AlertCircle,
   Bookmark,
   ChevronUp,
   FolderOpen,
@@ -297,6 +298,11 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                   )}
                 </span>
               </>
+            ) : playback.errorMessage ? (
+              <span className="flex items-center gap-1.5 text-rose-300 font-medium truncate">
+                <AlertCircle className="w-3 h-3 shrink-0" />
+                <span className="truncate">{playback.errorMessage}</span>
+              </span>
             ) : (
               <span className="text-zinc-500">
                 {settings.fullTrackMode

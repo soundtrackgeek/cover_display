@@ -8,6 +8,7 @@ import {
   Download,
   Grid2x2,
   Layers,
+  Radio,
   Search,
   Settings,
   Shuffle,
@@ -49,6 +50,8 @@ const INITIAL_SETTINGS: AppSettings = {
   wallTileSize: 172,
   wallGap: 6,
   autoPlayOnSelect: true,
+  autoSurfTracksPerAlbum: 1,
+  autoSurfOrder: "sequential",
   autoInstallUpdates: true,
   savedFilters: [],
   crateAlbumIds: [],
@@ -77,6 +80,7 @@ const INITIAL_PLAYBACK: PlaybackState = {
   volume: 0.85,
   isPinned: false,
   fullTrackMode: false,
+  errorMessage: null,
   sourceView: "coverflow",
 };
 
@@ -108,6 +112,7 @@ export function App() {
   const [accentRgb, setAccentRgb] = useState<[number, number, number]>([217, 138, 46]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [crateOpen, setCrateOpen] = useState(false);
+  const [autoSurf, setAutoSurf] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   const searchRef = useRef<HTMLInputElement>(null);
@@ -123,8 +128,14 @@ export function App() {
   const skipSearchDebounceRef = useRef<boolean>(false);
   const selectedIndexRef = useRef<number>(0);
   const viewRef = useRef<ViewMode>("coverflow");
+  const totalCountRef = useRef<number>(0);
+  const autoSurfRef = useRef<boolean>(false);
+  const autoSurfOrderRef = useRef<"sequential" | "random">("sequential");
   selectedIndexRef.current = selectedIndex;
   viewRef.current = view;
+  totalCountRef.current = totalCount;
+  autoSurfRef.current = autoSurf;
+  autoSurfOrderRef.current = settings.autoSurfOrder;
 
   const canGoBack = historyIdxRef.current > 0;
   const canGoForward = historyIdxRef.current < historyRef.current.length - 1;
@@ -259,7 +270,12 @@ export function App() {
       .catch(console.error);
   }, []);
 
-  // Listen for live audio playback telemetry & async catalog ready event from Rust
+  // Keep Rust audio thread synced with Auto-Surf state
+  useEffect(() => {
+    void api.setAutoSurf(autoSurf, settings.autoSurfTracksPerAlbum);
+  }, [autoSurf, settings.autoSurfTracksPerAlbum]);
+
+  // Listen for live audio playback telemetry, async catalog ready, & Auto-Surf album advance
   useEffect(() => {
     const unlistenPlayback = listen<PlaybackState>("playback-state", (ev) => {
       setPlayback(ev.payload);
@@ -268,11 +284,46 @@ export function App() {
       setOverview(ev.payload);
       setFilter((f) => ({ ...f }));
     });
+    const unlistenAutoSurf = listen<string | null>("auto-surf-advance", () => {
+      if (!autoSurfRef.current) return;
+      const count = totalCountRef.current;
+      if (count <= 1) return;
+      let nextIdx: number;
+      if (autoSurfOrderRef.current === "random") {
+        nextIdx = Math.floor(Math.random() * count);
+        if (nextIdx === selectedIndexRef.current) {
+          nextIdx = (nextIdx + 1) % count;
+        }
+      } else {
+        nextIdx = (selectedIndexRef.current + 1) % count;
+      }
+      ensureRange(nextIdx - 24, nextIdx + 24);
+      setSelectedIndex(nextIdx);
+      setWallScrollNonce((n) => n + 1);
+    });
     return () => {
       void unlistenPlayback.then((fn) => fn());
       void unlistenCatalog.then((fn) => fn());
+      void unlistenAutoSurf.then((fn) => fn());
     };
-  }, []);
+  }, [ensureRange]);
+
+  // When Auto-Surf is active in Cover Wall, auto-play the newly focused album
+  useEffect(() => {
+    if (!autoSurf || view !== "wall") return;
+    const { album } = getAlbum(selectedIndex);
+    if (!album) return;
+    if (playback.albumId === album.id && playback.status === "playing") return;
+    const timer = window.setTimeout(() => {
+      void api.previewAlbum(album.id, {
+        startTrackIndex: 0,
+        isPinned: false,
+        sourceView: "wall",
+      });
+    }, 280);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoSurf, view, selectedIndex, getAlbum]);
 
   // Debounce search text into filter (coalescing consecutive typing into a single history step)
   useEffect(() => {
@@ -402,6 +453,38 @@ export function App() {
     setCrateOpen(false);
   }, [navigateToFilter]);
 
+  const handleToggleAutoSurf = useCallback(() => {
+    setAutoSurf((prev) => {
+      const next = !prev;
+      if (next) {
+        const n = settings.autoSurfTracksPerAlbum;
+        const modeLabel = settings.autoSurfOrder === "random" ? "random" : "next";
+        showToast(
+          `Auto-Surf ON · ${n} ${n === 1 ? "track" : "tracks"}/album (${modeLabel})`
+        );
+        if (playback.status !== "playing") {
+          const target = getAlbum(selectedIndexRef.current).album;
+          if (target) {
+            void api.previewAlbum(target.id, {
+              startTrackIndex: 0,
+              isPinned: false,
+              sourceView: viewRef.current,
+            });
+          }
+        }
+      } else {
+        showToast("Auto-Surf OFF");
+      }
+      return next;
+    });
+  }, [
+    settings.autoSurfTracksPerAlbum,
+    settings.autoSurfOrder,
+    playback.status,
+    getAlbum,
+    showToast,
+  ]);
+
   const handleSwitchView = useCallback(
     (nextView: ViewMode) => {
       if (nextView === view) return;
@@ -460,6 +543,9 @@ export function App() {
         ensureRange(randIdx - 24, randIdx + 24);
         setSelectedIndex(randIdx);
         setWallScrollNonce((n) => n + 1);
+      } else if (e.key === "s" || e.key === "S") {
+        e.preventDefault();
+        handleToggleAutoSurf();
       } else if (e.key === "b" || e.key === "B") {
         const targetId =
           view === "coverflow"
@@ -496,6 +582,7 @@ export function App() {
     selectedIndex,
     playback.albumId,
     handleToggleCrate,
+    handleToggleAutoSurf,
     handleHistoryBack,
     handleHistoryForward,
     handleSwitchView,
@@ -701,6 +788,24 @@ export function App() {
           >
             <Shuffle className="w-3.5 h-3.5 text-amber-400" />
             <span className="hidden lg:inline">Surprise Me</span>
+          </button>
+
+          <button
+            onClick={handleToggleAutoSurf}
+            disabled={totalCount <= 1}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs transition-all cursor-pointer disabled:opacity-30 ${
+              autoSurf
+                ? "bg-emerald-500/20 border-emerald-400/50 text-emerald-200 shadow-lg shadow-emerald-500/15"
+                : "bg-white/[0.05] hover:bg-white/[0.11] border-white/[0.08] text-zinc-200"
+            }`}
+            title="Hands-free Auto-Surf jukebox (S)"
+          >
+            <Radio
+              className={`w-3.5 h-3.5 ${
+                autoSurf ? "text-emerald-300 animate-pulse" : "text-zinc-400"
+              }`}
+            />
+            <span className="hidden lg:inline">Auto-Surf</span>
           </button>
 
           <button

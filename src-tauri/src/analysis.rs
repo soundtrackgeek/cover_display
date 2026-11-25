@@ -1,11 +1,57 @@
 use crate::config::{app_cache_dir, AppSettings, PreviewMode};
 use crate::library::{db_path, open_readonly_db};
 use half::f16;
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::PathBuf;
+
+/// Reusable read-only SQLite connections kept warm on the audio thread
+/// so track switches and hover previews avoid reopening 3 databases per track.
+#[derive(Default)]
+pub struct AnalysisDbCache {
+    library_dir: String,
+    analysis_conn: Option<Connection>,
+    clap_conn: Option<Connection>,
+    timelines_conn: Option<Connection>,
+}
+
+impl AnalysisDbCache {
+    pub fn ensure_dir(&mut self, library_dir: &str) {
+        if self.library_dir != library_dir {
+            self.library_dir = library_dir.to_string();
+            self.analysis_conn = None;
+            self.clap_conn = None;
+            self.timelines_conn = None;
+        }
+    }
+
+    fn analysis(&mut self) -> Option<&Connection> {
+        if self.analysis_conn.is_none() {
+            self.analysis_conn =
+                open_readonly_db(&db_path(&self.library_dir, "music-analysis.sqlite3")).ok();
+        }
+        self.analysis_conn.as_ref()
+    }
+
+    fn clap(&mut self) -> Option<&Connection> {
+        if self.clap_conn.is_none() {
+            self.clap_conn =
+                open_readonly_db(&db_path(&self.library_dir, "music-clap.sqlite3")).ok();
+        }
+        self.clap_conn.as_ref()
+    }
+
+    fn timelines(&mut self) -> Option<&Connection> {
+        if self.timelines_conn.is_none() {
+            self.timelines_conn =
+                open_readonly_db(&db_path(&self.library_dir, "music-timelines.sqlite3")).ok();
+        }
+        self.timelines_conn.as_ref()
+    }
+}
 
 const TIMELINE_COLS: usize = 29;
 const TIMELINE_BYTES_PER_ROW: usize = TIMELINE_COLS * 2; // 58 bytes of little-endian f16
@@ -33,8 +79,8 @@ struct TimelineDecoded {
     track_loudness_db: Option<f32>,
 }
 
-fn lookup_audio_hash(library_dir: &str, file_path: &str, filename: &str) -> Option<String> {
-    let conn = open_readonly_db(&db_path(library_dir, "music-analysis.sqlite3")).ok()?;
+fn lookup_audio_hash(cache: &mut AnalysisDbCache, file_path: &str, filename: &str) -> Option<String> {
+    let conn = cache.analysis()?;
     let full_key = format!(
         "{}\\{}",
         file_path.trim_end_matches(['\\', '/']),
@@ -58,10 +104,9 @@ fn lookup_audio_hash(library_dir: &str, file_path: &str, filename: &str) -> Opti
     .ok()
 }
 
-fn lookup_clap_windows(library_dir: &str, audio_hash: &str) -> Vec<f32> {
-    let conn = match open_readonly_db(&db_path(library_dir, "music-clap.sqlite3")) {
-        Ok(c) => c,
-        Err(_) => return Vec::new(),
+fn lookup_clap_windows(cache: &mut AnalysisDbCache, audio_hash: &str) -> Vec<f32> {
+    let Some(conn) = cache.clap() else {
+        return Vec::new();
     };
 
     let raw: Option<String> = conn
@@ -80,8 +125,8 @@ fn lookup_clap_windows(library_dir: &str, audio_hash: &str) -> Vec<f32> {
     Vec::new()
 }
 
-fn lookup_timeline(library_dir: &str, audio_hash: &str) -> Option<TimelineDecoded> {
-    let conn = open_readonly_db(&db_path(library_dir, "music-timelines.sqlite3")).ok()?;
+fn lookup_timeline(cache: &mut AnalysisDbCache, audio_hash: &str) -> Option<TimelineDecoded> {
+    let conn = cache.timelines()?;
     let (rows_i, left_db, right_db, blob): (i64, Option<f64>, Option<f64>, Vec<u8>) = conn
         .query_row(
             "SELECT rows, left_db, right_db, data FROM timelines WHERE audio_hash = ?1 AND data IS NOT NULL LIMIT 1",
@@ -326,6 +371,7 @@ fn pick_smart_highlight(
     (best_t as f32, reason)
 }
 
+#[allow(dead_code)]
 pub fn analyze_track_preview(
     library_dir: &str,
     file_path: &str,
@@ -334,17 +380,39 @@ pub fn analyze_track_preview(
     settings: &AppSettings,
     custom_start_override: Option<f32>,
 ) -> TrackPreviewPlan {
+    let mut cache = AnalysisDbCache::default();
+    analyze_track_preview_cached(
+        &mut cache,
+        library_dir,
+        file_path,
+        filename,
+        duration_sec,
+        settings,
+        custom_start_override,
+    )
+}
+
+pub fn analyze_track_preview_cached(
+    cache: &mut AnalysisDbCache,
+    library_dir: &str,
+    file_path: &str,
+    filename: &str,
+    duration_sec: i32,
+    settings: &AppSettings,
+    custom_start_override: Option<f32>,
+) -> TrackPreviewPlan {
+    cache.ensure_dir(library_dir);
     let track_dur = (duration_sec.max(1)) as f32;
     let clip_dur = (settings.clip_duration_sec.clamp(5, 120) as f32).min(track_dur);
     let max_valid_start = (track_dur - clip_dur).max(0.0);
 
-    let audio_hash = lookup_audio_hash(library_dir, file_path, filename);
+    let audio_hash = lookup_audio_hash(cache, file_path, filename);
     let timeline = audio_hash
         .as_deref()
-        .and_then(|h| lookup_timeline(library_dir, h));
+        .and_then(|h| lookup_timeline(cache, h));
     let clap_windows = audio_hash
         .as_deref()
-        .map(|h| lookup_clap_windows(library_dir, h))
+        .map(|h| lookup_clap_windows(cache, h))
         .unwrap_or_default();
 
     let effective_dur = timeline

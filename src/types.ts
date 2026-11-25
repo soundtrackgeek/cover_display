@@ -49,6 +49,8 @@ export interface AppSettings {
   wallTileSize: number;
   wallGap: number;
   autoPlayOnSelect: boolean;
+  autoSurfTracksPerAlbum: number;
+  autoSurfOrder: "sequential" | "random";
   autoInstallUpdates: boolean;
   savedFilters: SavedFilterPreset[];
   crateAlbumIds: string[];
@@ -166,6 +168,7 @@ export interface PlaybackState {
   volume: number;
   isPinned: boolean;
   fullTrackMode: boolean;
+  errorMessage: string | null;
   sourceView: string;
 }
 

@@ -60,6 +60,8 @@ export const api = {
     invoke<void>("playback_stop", { onlyIfUnpinned }),
   setPinned: (pinned: boolean) =>
     invoke<void>("playback_set_pinned", { pinned }),
+  setAutoSurf: (enabled: boolean, tracksPerAlbum: number) =>
+    invoke<void>("playback_set_auto_surf", { enabled, tracksPerAlbum }),
   setVolume: (volume: number) => invoke<void>("playback_set_volume", { volume }),
   getPlaybackState: () => invoke<PlaybackState>("get_playback_state"),
   clearCoverCache: () => invoke<number>("clear_cover_cache"),
