@@ -570,6 +570,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           ))}
                         </div>
                       </div>
+                      <label className="flex items-center justify-between text-xs text-zinc-300 cursor-pointer pt-1">
+                        <span>
+                          <span className="font-medium text-zinc-200">
+                            Audio-Reactive Visualizer &amp; Beat Glow
+                          </span>{" "}
+                          <span className="text-zinc-500">
+                            — Spectrum bars, vinyl pulse ring &amp; reactive cover lift
+                          </span>
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={draft.autoSurfAudioReactive}
+                          onChange={(e) =>
+                            patch({ autoSurfAudioReactive: e.target.checked })
+                          }
+                          className="accent-emerald-400"
+                        />
+                      </label>
                     </div>
                   )}
                 </div>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import {
+  AudioLines,
   Bookmark,
   ChevronLeft,
   ChevronRight,
@@ -22,6 +23,7 @@ import { CoverWallView } from "./components/CoverWallView";
 import { CrateDrawer } from "./components/CrateDrawer";
 import { FilterBar } from "./components/FilterBar";
 import { PartyStageView } from "./components/PartyStageView";
+import { PartyVisualizer } from "./components/PartyVisualizer";
 import { PlayerBar } from "./components/PlayerBar";
 import { SettingsModal } from "./components/SettingsModal";
 import { useAlbumWindow } from "./hooks/useAlbumWindow";
@@ -83,6 +85,7 @@ const INITIAL_SETTINGS: AppSettings = {
   autoSurfPartyMode: true,
   autoSurfSceneMode: "auto",
   autoSurfTransition: "auto",
+  autoSurfAudioReactive: true,
   autoInstallUpdates: true,
   savedFilters: [],
   crateAlbumIds: [],
@@ -671,6 +674,18 @@ export function App() {
       } else if ((e.key === "t" || e.key === "T") && autoSurfRef.current) {
         e.preventDefault();
         handleCyclePartyTransition();
+      } else if ((e.key === "a" || e.key === "A") && autoSurfRef.current) {
+        e.preventDefault();
+        setSettings((prev) => {
+          const next = { ...prev, autoSurfAudioReactive: !prev.autoSurfAudioReactive };
+          void api.updateSettings(next);
+          showToast(
+            next.autoSurfAudioReactive
+              ? "Audio-Reactive Effects ON"
+              : "Audio-Reactive Effects OFF"
+          );
+          return next;
+        });
       } else if (e.key === "b" || e.key === "B") {
         const targetId =
           effectiveStage !== "wall"
@@ -1067,6 +1082,23 @@ export function App() {
                     ? `Mix (${PARTY_TRANSITION_LABELS[activeTransitionStyle]})`
                     : PARTY_TRANSITION_LABELS[settings.autoSurfTransition]}
                 </button>
+
+                <button
+                  onClick={() =>
+                    handleQuickUpdateSettings({
+                      autoSurfAudioReactive: !settings.autoSurfAudioReactive,
+                    })
+                  }
+                  className={`flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-medium transition-colors cursor-pointer ${
+                    settings.autoSurfAudioReactive
+                      ? "bg-fuchsia-500/20 border-fuchsia-400/40 text-fuchsia-200"
+                      : "bg-white/[0.04] border-white/10 text-zinc-400 hover:text-white"
+                  }`}
+                  title="Toggle audio-reactive visualizer & beat glow (A)"
+                >
+                  <AudioLines className="w-3 h-3" />
+                  Pulse
+                </button>
               </>
             )}
 
@@ -1099,6 +1131,7 @@ export function App() {
             transitionStyle={activeTransitionStyle}
             transitionIndex={albumTransitionIdx}
             fadeMs={settings.fadeMs}
+            audioReactive={settings.autoSurfAudioReactive}
             totalCount={totalCount}
             selectedIndex={selectedIndex}
             getAlbum={getAlbum}
@@ -1113,7 +1146,7 @@ export function App() {
             onStepAlbum={(delta) => handleStepPartyAlbum(delta, false)}
           />
         ) : effectiveStage === "coverflow" ? (
-          <div key={partyActive ? "party-flow" : "std-flow"} className={`${partyActive ? "party-scene-enter" : ""} flex-1 flex flex-col overflow-hidden`}>
+          <div key={partyActive ? "party-flow" : "std-flow"} className={`${partyActive ? "party-scene-enter" : ""} relative flex-1 flex flex-col overflow-hidden`}>
             <CoverFlowView
               queryId={queryId}
               totalCount={totalCount}
@@ -1131,9 +1164,19 @@ export function App() {
               onOpenFolder={handleOpenFolder}
               partySpin={partyActive}
             />
+            {partyActive && settings.autoSurfAudioReactive && (
+              <PartyVisualizer
+                variant="horizon"
+                level={playback.level}
+                isPlaying={playback.status === "playing"}
+                accentRgb={accentRgb}
+                envelope={playback.envelope}
+                className="z-20 opacity-85"
+              />
+            )}
           </div>
         ) : (
-          <div key={partyActive ? "party-wall" : "std-wall"} className={`${partyActive ? "party-scene-enter" : ""} flex-1 flex flex-col overflow-hidden`}>
+          <div key={partyActive ? "party-wall" : "std-wall"} className={`${partyActive ? "party-scene-enter" : ""} relative flex-1 flex flex-col overflow-hidden`}>
             <CoverWallView
               queryId={queryId}
               totalCount={totalCount}
@@ -1156,6 +1199,16 @@ export function App() {
               partySpotlight={partyActive}
               accentRgb={accentRgb}
             />
+            {partyActive && settings.autoSurfAudioReactive && (
+              <PartyVisualizer
+                variant="aurora"
+                level={playback.level}
+                isPlaying={playback.status === "playing"}
+                accentRgb={accentRgb}
+                envelope={playback.envelope}
+                className="z-20 opacity-90"
+              />
+            )}
           </div>
         )}
       </main>

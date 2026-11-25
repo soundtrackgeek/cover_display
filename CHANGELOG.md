@@ -5,6 +5,16 @@ All notable changes to Cover Display will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-11-25
+
+### Added
+- **60fps Audio-Reactive Party Effects (`PartyVisualizer`)**: Powered by live RMS audio telemetry (`playback.level`), track energy envelopes, and dual-tone palettes derived from each album's `accentRgb`, with transient beat-peak detection:
+  - **Horizon Spectrum Bars** (Cinema Spotlight & Cover Flow Spin): Translucent mirrored equalizer bars rising from a glowing studio horizon line.
+  - **Radial Vinyl Soundwave & Shockwaves** (Vinyl Turntable): 64-spoke circular radial pulse ring behind the spinning LP with expanding beat shockwave rings on loud peaks.
+  - **Dual-Tone Aurora Orbs & Wave Ribbon** (Floating Mosaic & Cover Wall Spotlight): Breathing ambient beat orbs paired with a sleek bottom waveform ribbon.
+  - **Dynamic Cover Lift**: Subtle physical scale & elevation lift on strong musical peaks.
+- **Quick Toggle & Persistence**: Toggle `Pulse` directly in the floating Party HUD, press `A` during Auto-Surf, or configure **Audio-Reactive Visualizer & Beat Glow** in **Settings → Preview & Audio**.
+
 ## [0.7.0] - 2026-11-25
 
 ### Added

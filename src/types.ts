@@ -62,6 +62,7 @@ export interface AppSettings {
   autoSurfPartyMode: boolean;
   autoSurfSceneMode: PartySceneMode;
   autoSurfTransition: PartyTransitionMode;
+  autoSurfAudioReactive: boolean;
   autoInstallUpdates: boolean;
   savedFilters: SavedFilterPreset[];
   crateAlbumIds: string[];

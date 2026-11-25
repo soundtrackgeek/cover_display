@@ -12,6 +12,7 @@ import {
 import { bestChartBadge, coverUrl, formatRating } from "../api";
 import type { AlbumSummary, PartyTransition, PlaybackState } from "../types";
 import { CoverImage } from "./CoverImage";
+import { PartyVisualizer } from "./PartyVisualizer";
 
 export type StageScene = "spotlight" | "vinyl" | "mosaic";
 
@@ -20,6 +21,7 @@ interface PartyStageViewProps {
   transitionStyle: PartyTransition;
   transitionIndex: number;
   fadeMs: number;
+  audioReactive: boolean;
   totalCount: number;
   selectedIndex: number;
   getAlbum: (idx: number) => { album: AlbumSummary | null; score: number };
@@ -190,6 +192,7 @@ export const PartyStageView: React.FC<PartyStageViewProps> = ({
   transitionStyle,
   transitionIndex,
   fadeMs,
+  audioReactive,
   totalCount,
   selectedIndex,
   getAlbum,
@@ -256,7 +259,10 @@ export const PartyStageView: React.FC<PartyStageViewProps> = ({
 
   const [r, g, b] = accentRgb;
   const isPlaying = playback.status === "playing";
-  const level = Math.max(0, Math.min(1, playback.level * 1.65));
+  const rawLevel = audioReactive && isPlaying ? Math.max(0, Math.min(1, playback.level * 1.65)) : 0;
+  // Extra lift on loud peaks for tactile cover bounce
+  const peakBoost = rawLevel > 0.55 ? (rawLevel - 0.55) * 1.4 : 0;
+  const level = Math.min(1, rawLevel + peakBoost * 0.28);
   const sceneEnterClass =
     SCENE_ENTER_CLASSES[transitionIndex % SCENE_ENTER_CLASSES.length];
   const washDurationMs = Math.max(600, Math.min(1800, fadeMs + 220));
@@ -375,16 +381,35 @@ export const PartyStageView: React.FC<PartyStageViewProps> = ({
 
       {/* Beat-Reactive Ambient Accent Aurora (smoothly morphs palette across albums) */}
       <div
-        className="pointer-events-none absolute inset-0 transition-all duration-500"
+        className="pointer-events-none absolute inset-0 transition-all duration-300"
         style={{
           background: `radial-gradient(circle at ${
-            scene === "vinyl" ? "44% 50%" : "50% 46%"
-          }, rgba(${r},${g},${b},${0.2 + level * 0.22}) 0%, rgba(${r},${g},${b},${
-            0.06 + level * 0.08
-          }) 36%, transparent 72%)`,
-          transform: `scale(${1 + level * 0.05})`,
+            scene === "vinyl" ? "48% 46%" : "50% 46%"
+          }, rgba(${r},${g},${b},${0.18 + level * 0.26}) 0%, rgba(${r},${g},${b},${
+            0.05 + level * 0.1
+          }) 38%, transparent 72%)`,
+          transform: `scale(${1 + level * 0.06})`,
         }}
       />
+
+      {/* 60fps Audio-Reactive Canvas Visualizer tailored to each Party Scene */}
+      {audioReactive && (
+        <PartyVisualizer
+          variant={
+            scene === "spotlight"
+              ? "horizon"
+              : scene === "vinyl"
+              ? "radial"
+              : "aurora"
+          }
+          level={playback.level}
+          isPlaying={isPlaying}
+          accentRgb={accentRgb}
+          envelope={playback.envelope}
+          radialCenter={scene === "vinyl" ? [0.54, 0.41] : [0.5, 0.5]}
+          className="z-[4]"
+        />
+      )}
 
       {/* Audio-Synced Color Wash Pulse on Every Album Change */}
       {washNonce > 0 && (
@@ -427,8 +452,12 @@ export const PartyStageView: React.FC<PartyStageViewProps> = ({
         <div className="relative z-10 w-full max-w-5xl px-10 flex flex-col md:flex-row items-center justify-center gap-10 lg:gap-14">
           {/* Hero Cover Art with Energetic Outgoing + Incoming Transition */}
           <div
-            className="relative shrink-0 transition-transform duration-150"
-            style={{ transform: `scale(${1 + level * 0.018})` }}
+            className="relative shrink-0 transition-transform duration-100"
+            style={{
+              transform: `scale(${1 + level * 0.026 + peakBoost * 0.018}) translateY(${
+                -(level * 2.5 + peakBoost * 2.5)
+              }px)`,
+            }}
           >
             <TransitionCoverFrame
               current={album}
@@ -699,8 +728,12 @@ export const PartyStageView: React.FC<PartyStageViewProps> = ({
         <div className="relative z-10 w-full h-full flex flex-col items-center justify-center px-8 py-12 gap-7">
           {/* Center Pop-Forward Album with Energetic Outgoing + Incoming Transition */}
           <div
-            className="relative transition-transform duration-150"
-            style={{ transform: `scale(${1 + level * 0.022})` }}
+            className="relative transition-transform duration-100"
+            style={{
+              transform: `scale(${1 + level * 0.028 + peakBoost * 0.02}) translateY(${
+                -(level * 2.5 + peakBoost * 2.5)
+              }px)`,
+            }}
           >
             <TransitionCoverFrame
               current={album}
