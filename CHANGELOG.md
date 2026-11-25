@@ -5,6 +5,16 @@ All notable changes to Cover Display will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-11-25
+
+### Added
+- **Energetic Album-to-Album Party Transitions**: Added true choreographed outgoing + incoming cover transitions across Party Stage scenes (Spotlight, Vinyl, and Mosaic), configurable via the floating Party HUD (`FX:` pill), `T` shortcut, or **Settings → Preview & Audio**:
+  - **3D Card Flip**: Two-sided 3D perspective card flip where the outgoing album flips 180° to reveal the incoming album on the back face.
+  - **Crate Toss**: Outgoing cover flicks off to the side with rotational momentum while the incoming cover drops and springs into place.
+  - **Shutter Wipe**: Clean Music-TV clip-path wipe with a luminous `accentRgb` leading shutter beam.
+  - **Color Wash + Zoom Bloom**: Outgoing artwork dissolves smoothly while the new cover blooms forward alongside a full-stage radial `accentRgb` color-wash pulse synced to the audio crossfade (`fadeMs`).
+  - **Auto-Mix** (default): Automatically cycles through all 4 transitions on every album change, paired with varied scene-to-scene stage transitions (`Fade`, `Slide`, `Zoom`).
+
 ## [0.6.0] - 2026-11-25
 
 ### Added

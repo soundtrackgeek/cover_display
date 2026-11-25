@@ -14,6 +14,10 @@ export type PartyScene = "spotlight" | "vinyl" | "mosaic" | "coverflow" | "wall"
 
 export type PartySceneMode = "auto" | PartyScene;
 
+export type PartyTransition = "flip" | "toss" | "wipe" | "zoom";
+
+export type PartyTransitionMode = "auto" | PartyTransition;
+
 export interface AlbumFilter {
   search: string;
   genres: string[];
@@ -57,6 +61,7 @@ export interface AppSettings {
   autoSurfOrder: "sequential" | "random";
   autoSurfPartyMode: boolean;
   autoSurfSceneMode: PartySceneMode;
+  autoSurfTransition: PartyTransitionMode;
   autoInstallUpdates: boolean;
   savedFilters: SavedFilterPreset[];
   crateAlbumIds: string[];

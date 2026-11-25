@@ -33,6 +33,8 @@ import type {
   CatalogOverview,
   PartyScene,
   PartySceneMode,
+  PartyTransition,
+  PartyTransitionMode,
   PlaybackState,
   ViewMode,
 } from "./types";
@@ -47,6 +49,16 @@ const PARTY_SCENE_LABELS: Record<PartySceneMode, string> = {
   mosaic: "Mosaic",
   coverflow: "Flow",
   wall: "Wall",
+};
+
+const PARTY_TRANSITIONS: PartyTransition[] = ["flip", "toss", "wipe", "zoom"];
+
+const PARTY_TRANSITION_LABELS: Record<PartyTransitionMode, string> = {
+  auto: "Mix",
+  flip: "3D Flip",
+  toss: "Toss",
+  wipe: "Wipe",
+  zoom: "Wash",
 };
 
 const INITIAL_SETTINGS: AppSettings = {
@@ -70,6 +82,7 @@ const INITIAL_SETTINGS: AppSettings = {
   autoSurfOrder: "sequential",
   autoSurfPartyMode: true,
   autoSurfSceneMode: "auto",
+  autoSurfTransition: "auto",
   autoInstallUpdates: true,
   savedFilters: [],
   crateAlbumIds: [],
@@ -335,6 +348,10 @@ export function App() {
     settings.autoSurfSceneMode === "auto"
       ? PARTY_SCENES[partySceneIdx % PARTY_SCENES.length]
       : settings.autoSurfSceneMode;
+  const activeTransitionStyle: PartyTransition =
+    settings.autoSurfTransition === "auto"
+      ? PARTY_TRANSITIONS[albumTransitionIdx % PARTY_TRANSITIONS.length]
+      : settings.autoSurfTransition;
   const effectiveStage: PartyScene = partyActive ? activePartyScene : view;
 
   // When Auto-Surf is active outside Cover Flow (Wall or Party Stage), auto-play the focused album
@@ -574,6 +591,19 @@ export function App() {
     }
   }, [autoSurf, settings.autoSurfPartyMode, settings.autoSurfSceneMode, showToast]);
 
+  const handleCyclePartyTransition = useCallback(() => {
+    if (!autoSurf || !settings.autoSurfPartyMode) return;
+    const modes: PartyTransitionMode[] = ["auto", "flip", "toss", "wipe", "zoom"];
+    const curIdx = modes.indexOf(settings.autoSurfTransition);
+    const nextMode = modes[(curIdx + 1) % modes.length];
+    setSettings((prev) => {
+      const next = { ...prev, autoSurfTransition: nextMode };
+      void api.updateSettings(next);
+      return next;
+    });
+    showToast(`Transition: ${PARTY_TRANSITION_LABELS[nextMode]}`);
+  }, [autoSurf, settings.autoSurfPartyMode, settings.autoSurfTransition, showToast]);
+
   const handleSwitchView = useCallback(
     (nextView: ViewMode) => {
       if (nextView === view) return;
@@ -638,6 +668,9 @@ export function App() {
       } else if ((e.key === "v" || e.key === "V") && autoSurfRef.current) {
         e.preventDefault();
         handleCyclePartyScene();
+      } else if ((e.key === "t" || e.key === "T") && autoSurfRef.current) {
+        e.preventDefault();
+        handleCyclePartyTransition();
       } else if (e.key === "b" || e.key === "B") {
         const targetId =
           effectiveStage !== "wall"
@@ -676,6 +709,7 @@ export function App() {
     handleToggleCrate,
     handleToggleAutoSurf,
     handleCyclePartyScene,
+    handleCyclePartyTransition,
     handleHistoryBack,
     handleHistoryForward,
     handleSwitchView,
@@ -990,37 +1024,50 @@ export function App() {
             </button>
 
             {settings.autoSurfPartyMode && (
-              <div className="flex items-center gap-0.5 pl-1 border-l border-white/10">
-                {(
-                  ["auto", "spotlight", "vinyl", "mosaic", "coverflow", "wall"] as PartySceneMode[]
-                ).map((mode) => {
-                  const selected = settings.autoSurfSceneMode === mode;
-                  const isLiveScene =
-                    settings.autoSurfSceneMode === "auto" && activePartyScene === mode;
-                  return (
-                    <button
-                      key={mode}
-                      onClick={() =>
-                        handleQuickUpdateSettings({ autoSurfSceneMode: mode })
-                      }
-                      className={`relative px-2 py-0.5 rounded-full text-[11px] transition-all cursor-pointer ${
-                        selected
-                          ? "bg-white text-zinc-950 font-semibold shadow-sm"
-                          : isLiveScene
-                          ? "bg-emerald-500/20 text-emerald-200 font-medium"
-                          : "text-zinc-400 hover:text-white hover:bg-white/[0.06]"
-                      }`}
-                      title={
-                        mode === "auto"
-                          ? "Auto-cycle all 5 Party Views on every album change (V to skip scene)"
-                          : `Lock Party View to ${PARTY_SCENE_LABELS[mode]}`
-                      }
-                    >
-                      {PARTY_SCENE_LABELS[mode]}
-                    </button>
-                  );
-                })}
-              </div>
+              <>
+                <div className="flex items-center gap-0.5 pl-1 border-l border-white/10">
+                  {(
+                    ["auto", "spotlight", "vinyl", "mosaic", "coverflow", "wall"] as PartySceneMode[]
+                  ).map((mode) => {
+                    const selected = settings.autoSurfSceneMode === mode;
+                    const isLiveScene =
+                      settings.autoSurfSceneMode === "auto" && activePartyScene === mode;
+                    return (
+                      <button
+                        key={mode}
+                        onClick={() =>
+                          handleQuickUpdateSettings({ autoSurfSceneMode: mode })
+                        }
+                        className={`relative px-2 py-0.5 rounded-full text-[11px] transition-all cursor-pointer ${
+                          selected
+                            ? "bg-white text-zinc-950 font-semibold shadow-sm"
+                            : isLiveScene
+                            ? "bg-emerald-500/20 text-emerald-200 font-medium"
+                            : "text-zinc-400 hover:text-white hover:bg-white/[0.06]"
+                        }`}
+                        title={
+                          mode === "auto"
+                            ? "Auto-cycle all 5 Party Views on every album change (V to skip scene)"
+                            : `Lock Party View to ${PARTY_SCENE_LABELS[mode]}`
+                        }
+                      >
+                        {PARTY_SCENE_LABELS[mode]}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <button
+                  onClick={handleCyclePartyTransition}
+                  className="ml-0.5 pl-2 pr-2 py-0.5 rounded-full border border-white/10 bg-white/[0.05] hover:bg-white/[0.12] text-[10px] font-mono text-amber-200 transition-colors cursor-pointer"
+                  title="Cycle album transition effect: Mix, 3D Flip, Toss, Wipe, Wash (T)"
+                >
+                  FX:{" "}
+                  {settings.autoSurfTransition === "auto"
+                    ? `Mix (${PARTY_TRANSITION_LABELS[activeTransitionStyle]})`
+                    : PARTY_TRANSITION_LABELS[settings.autoSurfTransition]}
+                </button>
+              </>
             )}
 
             <button
@@ -1049,7 +1096,9 @@ export function App() {
           effectiveStage === "mosaic" ? (
           <PartyStageView
             scene={effectiveStage}
+            transitionStyle={activeTransitionStyle}
             transitionIndex={albumTransitionIdx}
+            fadeMs={settings.fadeMs}
             totalCount={totalCount}
             selectedIndex={selectedIndex}
             getAlbum={getAlbum}

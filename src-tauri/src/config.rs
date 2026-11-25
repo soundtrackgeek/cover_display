@@ -120,6 +120,8 @@ pub struct AppSettings {
     pub auto_surf_party_mode: bool,
     #[serde(default = "default_auto_surf_scene")]
     pub auto_surf_scene_mode: String,
+    #[serde(default = "default_auto_surf_transition")]
+    pub auto_surf_transition: String,
     #[serde(default = "default_true")]
     pub auto_install_updates: bool,
     #[serde(default)]
@@ -177,6 +179,9 @@ fn default_auto_surf_order() -> String {
 fn default_auto_surf_scene() -> String {
     "auto".to_string()
 }
+fn default_auto_surf_transition() -> String {
+    "auto".to_string()
+}
 
 impl Default for AppSettings {
     fn default() -> Self {
@@ -201,6 +206,7 @@ impl Default for AppSettings {
             auto_surf_order: default_auto_surf_order(),
             auto_surf_party_mode: true,
             auto_surf_scene_mode: default_auto_surf_scene(),
+            auto_surf_transition: default_auto_surf_transition(),
             auto_install_updates: true,
             saved_filters: Vec::new(),
             crate_album_ids: Vec::new(),
@@ -242,6 +248,12 @@ pub fn load_settings() -> AppSettings {
                 "auto" | "spotlight" | "vinyl" | "mosaic" | "coverflow" | "wall"
             ) {
                 parsed.auto_surf_scene_mode = "auto".to_string();
+            }
+            if !matches!(
+                parsed.auto_surf_transition.as_str(),
+                "auto" | "flip" | "toss" | "wipe" | "zoom"
+            ) {
+                parsed.auto_surf_transition = "auto".to_string();
             }
             return parsed;
         }

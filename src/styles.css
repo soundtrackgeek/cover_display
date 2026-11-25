@@ -261,3 +261,213 @@ input[type="range"].studio-range:hover::-webkit-slider-thumb {
 .party-mosaic-drift-b {
   animation: partyMosaicDriftB 22s ease-in-out infinite;
 }
+
+/* ==========================================================================
+   Energetic Album-to-Album Transitions (Outgoing + Incoming Choreography)
+   ========================================================================== */
+
+/* 1. True 3D Two-Sided Card Flip */
+.party-flip-perspective {
+  perspective: 1400px;
+}
+
+@keyframes partyCardFlip180 {
+  0% {
+    transform: rotateY(0deg) scale(1);
+  }
+  45% {
+    transform: rotateY(90deg) scale(0.92);
+  }
+  100% {
+    transform: rotateY(180deg) scale(1);
+  }
+}
+
+.party-flip-rotor {
+  transform-style: preserve-3d;
+  animation: partyCardFlip180 0.78s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.party-flip-face {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.party-flip-back {
+  transform: rotateY(180deg);
+}
+
+/* 2. Vinyl / Crate Toss */
+@keyframes partyTossOut {
+  0% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(-115%, -14%, 0) rotate(-17deg) scale(0.82);
+  }
+}
+
+@keyframes partyTossIn {
+  0% {
+    opacity: 0;
+    transform: translate3d(42%, -34%, 0) rotate(10deg) scale(0.84);
+  }
+  68% {
+    opacity: 1;
+    transform: translate3d(-2%, 2%, 0) rotate(-1deg) scale(1.02);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+  }
+}
+
+.party-toss-out {
+  animation: partyTossOut 0.62s cubic-bezier(0.4, 0, 0.85, 0.45) forwards;
+}
+
+.party-toss-in {
+  animation: partyTossIn 0.72s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* 3. Music-TV Shutter / Split Wipe */
+@keyframes partyWipeOut {
+  0% {
+    opacity: 1;
+    transform: scale(1) translateX(0);
+    filter: brightness(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.93) translateX(-18px);
+    filter: brightness(0.45);
+  }
+}
+
+@keyframes partyWipeIn {
+  0% {
+    clip-path: inset(0 0 0 100% round 16px);
+    transform: scale(1.05);
+  }
+  100% {
+    clip-path: inset(0 0 0 0 round 16px);
+    transform: scale(1);
+  }
+}
+
+@keyframes partyShutterBeam {
+  0% {
+    left: 100%;
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.95;
+  }
+  85% {
+    opacity: 0.85;
+  }
+  100% {
+    left: -12%;
+    opacity: 0;
+  }
+}
+
+.party-wipe-out {
+  animation: partyWipeOut 0.68s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.party-wipe-in {
+  animation: partyWipeIn 0.68s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.party-shutter-beam {
+  animation: partyShutterBeam 0.68s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* 4. Crossfade + Zoom Bloom */
+@keyframes partyZoomOut {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0px);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.14);
+    filter: blur(8px);
+  }
+}
+
+@keyframes partyZoomIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.84);
+    filter: blur(4px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0px);
+  }
+}
+
+.party-zoom-out {
+  animation: partyZoomOut 0.72s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.party-zoom-in {
+  animation: partyZoomIn 0.72s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Ambient Color Wash Sweep (synced to audio fadeMs) */
+@keyframes partyColorWashSweep {
+  0% {
+    opacity: 0;
+    transform: scale(0.86);
+  }
+  32% {
+    opacity: 0.55;
+    transform: scale(1.04);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.18);
+  }
+}
+
+.party-color-wash {
+  animation: partyColorWashSweep var(--party-wash-ms, 800ms) cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* Varied Scene-to-Scene Stage Transitions */
+@keyframes partySceneSlideIn {
+  0% {
+    opacity: 0;
+    transform: translateX(36px) scale(0.985);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes partySceneZoomIn {
+  0% {
+    opacity: 0;
+    transform: scale(1.04);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.party-scene-slide {
+  animation: partySceneSlideIn 0.58s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.party-scene-zoom {
+  animation: partySceneZoomIn 0.58s cubic-bezier(0.22, 1, 0.36, 1) both;
+}

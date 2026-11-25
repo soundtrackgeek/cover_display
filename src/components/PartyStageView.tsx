@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Bookmark,
   ChevronLeft,
@@ -10,14 +10,16 @@ import {
   User,
 } from "lucide-react";
 import { bestChartBadge, coverUrl, formatRating } from "../api";
-import type { AlbumSummary, PlaybackState } from "../types";
+import type { AlbumSummary, PartyTransition, PlaybackState } from "../types";
 import { CoverImage } from "./CoverImage";
 
 export type StageScene = "spotlight" | "vinyl" | "mosaic";
 
 interface PartyStageViewProps {
   scene: StageScene;
+  transitionStyle: PartyTransition;
   transitionIndex: number;
+  fadeMs: number;
   totalCount: number;
   selectedIndex: number;
   getAlbum: (idx: number) => { album: AlbumSummary | null; score: number };
@@ -32,7 +34,11 @@ interface PartyStageViewProps {
   onStepAlbum: (delta: number) => void;
 }
 
-const ENTER_CLASSES = ["party-enter-pop", "party-enter-flip", "party-enter-glide"] as const;
+const SCENE_ENTER_CLASSES = [
+  "party-scene-enter",
+  "party-scene-slide",
+  "party-scene-zoom",
+] as const;
 
 interface MosaicSlot {
   offset: number;
@@ -60,9 +66,130 @@ const MOSAIC_SLOTS: MosaicSlot[] = [
   { offset: 5, left: "88%", top: "14%", size: 108, opacity: 0.25, blur: 2, drift: "a", delaySec: -1 },
 ];
 
+interface TransitionCoverFrameProps {
+  current: AlbumSummary;
+  outgoing: AlbumSummary | null;
+  style: PartyTransition;
+  transitionKey: number;
+  sizeClass: string;
+  frameClass: string;
+  frameStyle: React.CSSProperties;
+  accentRgb: [number, number, number];
+  showSpineCrease?: boolean;
+}
+
+const TransitionCoverFrame: React.FC<TransitionCoverFrameProps> = ({
+  current,
+  outgoing,
+  style,
+  transitionKey,
+  sizeClass,
+  frameClass,
+  frameStyle,
+  accentRgb,
+  showSpineCrease = false,
+}) => {
+  const [r, g, b] = accentRgb;
+
+  const spineOverlay = showSpineCrease ? (
+    <div
+      className="pointer-events-none absolute inset-y-0 left-0 w-4 z-10"
+      style={{
+        background:
+          "linear-gradient(to right, rgba(255,255,255,0.16) 0%, rgba(0,0,0,0.22) 35%, transparent 100%)",
+      }}
+    />
+  ) : null;
+
+  // True 3D Two-Sided Card Flip when an outgoing album is present
+  if (style === "flip" && outgoing) {
+    return (
+      <div className={`party-flip-perspective relative ${sizeClass}`}>
+        <div
+          key={`flip-${transitionKey}`}
+          className="party-flip-rotor relative w-full h-full"
+        >
+          {/* Front face: outgoing album */}
+          <div
+            className={`party-flip-face absolute inset-0 overflow-hidden ${frameClass}`}
+            style={frameStyle}
+          >
+            <CoverImage album={outgoing} size={640} eager className="w-full h-full" />
+            {spineOverlay}
+          </div>
+          {/* Back face: incoming album */}
+          <div
+            className={`party-flip-face party-flip-back absolute inset-0 overflow-hidden ${frameClass}`}
+            style={frameStyle}
+          >
+            <CoverImage album={current} size={640} eager className="w-full h-full" />
+            {spineOverlay}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const outClass =
+    style === "toss"
+      ? "party-toss-out"
+      : style === "wipe"
+      ? "party-wipe-out"
+      : "party-zoom-out";
+
+  const inClass =
+    style === "toss"
+      ? "party-toss-in"
+      : style === "wipe"
+      ? "party-wipe-in"
+      : style === "flip"
+      ? "party-enter-flip"
+      : "party-zoom-in";
+
+  return (
+    <div className={`relative ${sizeClass}`}>
+      {/* Outgoing album layer */}
+      {outgoing && (
+        <div
+          key={`out-${outgoing.id}-${transitionKey}`}
+          className={`${outClass} pointer-events-none absolute inset-0 z-10 overflow-hidden ${frameClass}`}
+          style={frameStyle}
+        >
+          <CoverImage album={outgoing} size={640} eager className="w-full h-full" />
+          {spineOverlay}
+        </div>
+      )}
+
+      {/* Incoming album layer */}
+      <div
+        key={`in-${current.id}-${transitionKey}`}
+        className={`${inClass} relative z-20 w-full h-full overflow-hidden ${frameClass}`}
+        style={frameStyle}
+      >
+        <CoverImage album={current} size={640} eager className="w-full h-full" />
+        {spineOverlay}
+      </div>
+
+      {/* Luminous shutter light-sweep beam for Wipe transition */}
+      {style === "wipe" && outgoing && (
+        <div
+          key={`beam-${transitionKey}`}
+          className="party-shutter-beam pointer-events-none absolute inset-y-0 z-30 w-10 -skew-x-12"
+          style={{
+            background: `linear-gradient(90deg, transparent 0%, rgba(${r},${g},${b},0.92) 50%, transparent 100%)`,
+            filter: "blur(6px)",
+          }}
+        />
+      )}
+    </div>
+  );
+};
+
 export const PartyStageView: React.FC<PartyStageViewProps> = ({
   scene,
+  transitionStyle,
   transitionIndex,
+  fadeMs,
   totalCount,
   selectedIndex,
   getAlbum,
@@ -76,6 +203,34 @@ export const PartyStageView: React.FC<PartyStageViewProps> = ({
   onOpenFolder,
   onStepAlbum,
 }) => {
+  const { album } = getAlbum(selectedIndex);
+
+  // Track outgoing album + color wash trigger for choreographed transitions
+  const prevAlbumRef = useRef<AlbumSummary | null>(null);
+  const [outgoingAlbum, setOutgoingAlbum] = useState<AlbumSummary | null>(null);
+  const [washNonce, setWashNonce] = useState(0);
+  const clearTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!album) return;
+    const prev = prevAlbumRef.current;
+    if (prev && prev.id !== album.id) {
+      setOutgoingAlbum(prev);
+      setWashNonce((n) => n + 1);
+      if (clearTimerRef.current) window.clearTimeout(clearTimerRef.current);
+      clearTimerRef.current = window.setTimeout(() => {
+        setOutgoingAlbum(null);
+      }, 840);
+    }
+    prevAlbumRef.current = album;
+  }, [album]);
+
+  useEffect(() => {
+    return () => {
+      if (clearTimerRef.current) window.clearTimeout(clearTimerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     if (totalCount > 0) {
       ensureRange(selectedIndex - 16, selectedIndex + 16);
@@ -99,11 +254,12 @@ export const PartyStageView: React.FC<PartyStageViewProps> = ({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onStepAlbum]);
 
-  const { album } = getAlbum(selectedIndex);
   const [r, g, b] = accentRgb;
   const isPlaying = playback.status === "playing";
   const level = Math.max(0, Math.min(1, playback.level * 1.65));
-  const enterClass = ENTER_CLASSES[transitionIndex % ENTER_CLASSES.length];
+  const sceneEnterClass =
+    SCENE_ENTER_CLASSES[transitionIndex % SCENE_ENTER_CLASSES.length];
+  const washDurationMs = Math.max(600, Math.min(1800, fadeMs + 220));
 
   const progressPct = useMemo(() => {
     if (!playback.clipDurationSec || playback.clipDurationSec <= 0) return 0;
@@ -160,19 +316,27 @@ export const PartyStageView: React.FC<PartyStageViewProps> = ({
   return (
     <div
       key={scene}
-      className="party-scene-enter relative flex-1 flex flex-col items-center justify-center overflow-hidden bg-[#07080c] select-none"
+      className={`${sceneEnterClass} relative flex-1 flex flex-col items-center justify-center overflow-hidden bg-[#07080c] select-none`}
     >
-      {/* Dynamic Backdrop Layer */}
-      {scene === "spotlight" && album.hasCover && (
-        <div
-          key={`bg-${album.id}`}
-          className="pointer-events-none absolute inset-0 overflow-hidden"
-        >
-          <img
-            src={coverUrl(album.id, 640)}
-            alt=""
-            className="party-ken-burns w-full h-full object-cover opacity-35 blur-3xl saturate-150 transition-opacity duration-700"
-          />
+      {/* Dynamic Backdrop Layer (with outgoing crossfade in Spotlight) */}
+      {scene === "spotlight" && (
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          {outgoingAlbum?.hasCover && (
+            <img
+              key={`bg-out-${outgoingAlbum.id}`}
+              src={coverUrl(outgoingAlbum.id, 640)}
+              alt=""
+              className="party-zoom-out absolute inset-0 w-full h-full object-cover opacity-35 blur-3xl saturate-150"
+            />
+          )}
+          {album.hasCover && (
+            <img
+              key={`bg-in-${album.id}`}
+              src={coverUrl(album.id, 640)}
+              alt=""
+              className="party-ken-burns absolute inset-0 w-full h-full object-cover opacity-35 blur-3xl saturate-150 transition-opacity duration-700"
+            />
+          )}
           <div className="absolute inset-0 bg-gradient-to-t from-[#07080c] via-[#07080c]/55 to-[#07080c]/75" />
         </div>
       )}
@@ -201,7 +365,7 @@ export const PartyStageView: React.FC<PartyStageViewProps> = ({
             </div>
           ))}
           <div
-            className="absolute inset-0"
+            className="absolute inset-0 transition-all duration-700"
             style={{
               background: `radial-gradient(circle at 50% 48%, rgba(${r},${g},${b},0.16) 0%, rgba(7,8,12,0.72) 58%, rgba(7,8,12,0.94) 100%)`,
             }}
@@ -209,9 +373,9 @@ export const PartyStageView: React.FC<PartyStageViewProps> = ({
         </div>
       )}
 
-      {/* Beat-Reactive Ambient Accent Aurora */}
+      {/* Beat-Reactive Ambient Accent Aurora (smoothly morphs palette across albums) */}
       <div
-        className="pointer-events-none absolute inset-0 transition-all duration-150"
+        className="pointer-events-none absolute inset-0 transition-all duration-500"
         style={{
           background: `radial-gradient(circle at ${
             scene === "vinyl" ? "44% 50%" : "50% 46%"
@@ -221,6 +385,20 @@ export const PartyStageView: React.FC<PartyStageViewProps> = ({
           transform: `scale(${1 + level * 0.05})`,
         }}
       />
+
+      {/* Audio-Synced Color Wash Pulse on Every Album Change */}
+      {washNonce > 0 && (
+        <div
+          key={`wash-${washNonce}`}
+          className="party-color-wash pointer-events-none absolute inset-0 z-[5]"
+          style={
+            {
+              "--party-wash-ms": `${washDurationMs}ms`,
+              background: `radial-gradient(circle at 50% 48%, rgba(${r},${g},${b},0.48) 0%, rgba(${r},${g},${b},0.16) 44%, transparent 76%)`,
+            } as React.CSSProperties
+          }
+        />
+      )}
 
       {/* Subtle Left / Right Skip Buttons */}
       {totalCount > 1 && (
@@ -247,22 +425,25 @@ export const PartyStageView: React.FC<PartyStageViewProps> = ({
          ===================================================================== */}
       {scene === "spotlight" && (
         <div className="relative z-10 w-full max-w-5xl px-10 flex flex-col md:flex-row items-center justify-center gap-10 lg:gap-14">
-          {/* Hero Cover Art */}
+          {/* Hero Cover Art with Energetic Outgoing + Incoming Transition */}
           <div
-            key={`spot-art-${album.id}-${transitionIndex}`}
-            className={`${enterClass} relative shrink-0`}
+            className="relative shrink-0 transition-transform duration-150"
+            style={{ transform: `scale(${1 + level * 0.018})` }}
           >
-            <div
-              className="w-72 h-72 sm:w-80 sm:h-80 lg:w-[376px] lg:h-[376px] rounded-2xl overflow-hidden border border-white/15 transition-transform duration-150"
-              style={{
-                transform: `scale(${1 + level * 0.018})`,
+            <TransitionCoverFrame
+              current={album}
+              outgoing={outgoingAlbum}
+              style={transitionStyle}
+              transitionKey={transitionIndex}
+              sizeClass="w-72 h-72 sm:w-80 sm:h-80 lg:w-[376px] lg:h-[376px]"
+              frameClass="rounded-2xl border border-white/15"
+              frameStyle={{
                 boxShadow: `0 28px 80px rgba(0,0,0,0.85), 0 0 ${
                   44 + level * 52
                 }px rgba(${r},${g},${b},${0.32 + level * 0.28})`,
               }}
-            >
-              <CoverImage album={album} size={640} eager className="w-full h-full" />
-            </div>
+              accentRgb={accentRgb}
+            />
           </div>
 
           {/* Kinetic Metadata Column */}
@@ -402,12 +583,14 @@ export const PartyStageView: React.FC<PartyStageViewProps> = ({
         <div className="relative z-10 w-full max-w-5xl px-8 flex flex-col items-center justify-center gap-8">
           {/* LP Jacket + Sliding Spinning Vinyl Record */}
           <div
-            key={`vinyl-${album.id}-${transitionIndex}`}
             className="relative flex items-center justify-center"
             style={{ width: 510, height: 340 }}
           >
-            {/* Spinning 12" Vinyl Disc (behind right half of sleeve) */}
-            <div className="party-vinyl-slide absolute right-2 top-1/2 -translate-y-1/2 w-[312px] h-[312px]">
+            {/* Spinning 12" Vinyl Disc (slides out fresh for each album) */}
+            <div
+              key={`vinyl-disc-${album.id}-${transitionIndex}`}
+              className="party-vinyl-slide absolute right-2 top-1/2 -translate-y-1/2 w-[312px] h-[312px]"
+            >
               <div
                 className={`party-vinyl-spin ${
                   isPlaying ? "" : "party-vinyl-paused"
@@ -445,23 +628,22 @@ export const PartyStageView: React.FC<PartyStageViewProps> = ({
               </div>
             </div>
 
-            {/* Matte LP Jacket Sleeve */}
-            <div
-              className="party-enter-glide relative z-10 -ml-36 w-[328px] h-[328px] rounded-xl overflow-hidden border border-white/15"
-              style={{
-                boxShadow: `16px 24px 70px rgba(0,0,0,0.9), 0 0 ${
-                  36 + level * 42
-                }px rgba(${r},${g},${b},${0.28 + level * 0.22})`,
-              }}
-            >
-              <CoverImage album={album} size={640} eager className="w-full h-full" />
-              {/* Subtle cardboard spine crease highlight */}
-              <div
-                className="pointer-events-none absolute inset-y-0 left-0 w-4"
-                style={{
-                  background:
-                    "linear-gradient(to right, rgba(255,255,255,0.16) 0%, rgba(0,0,0,0.22) 35%, transparent 100%)",
+            {/* Matte LP Jacket Sleeve with Choreographed Outgoing + Incoming Transition */}
+            <div className="relative z-10 -ml-36">
+              <TransitionCoverFrame
+                current={album}
+                outgoing={outgoingAlbum}
+                style={transitionStyle}
+                transitionKey={transitionIndex}
+                sizeClass="w-[328px] h-[328px]"
+                frameClass="rounded-xl border border-white/15"
+                frameStyle={{
+                  boxShadow: `16px 24px 70px rgba(0,0,0,0.9), 0 0 ${
+                    36 + level * 42
+                  }px rgba(${r},${g},${b},${0.28 + level * 0.22})`,
                 }}
+                accentRgb={accentRgb}
+                showSpineCrease
               />
             </div>
           </div>
@@ -515,23 +697,26 @@ export const PartyStageView: React.FC<PartyStageViewProps> = ({
          ===================================================================== */}
       {scene === "mosaic" && (
         <div className="relative z-10 w-full h-full flex flex-col items-center justify-center px-8 py-12 gap-7">
-          {/* Center Pop-Forward Album */}
+          {/* Center Pop-Forward Album with Energetic Outgoing + Incoming Transition */}
           <div
-            key={`mosaic-art-${album.id}-${transitionIndex}`}
-            className={`${enterClass} relative`}
+            className="relative transition-transform duration-150"
+            style={{ transform: `scale(${1 + level * 0.022})` }}
           >
-            <div
-              className="w-72 h-72 sm:w-80 sm:h-80 lg:w-[348px] lg:h-[348px] rounded-2xl overflow-hidden border-2 transition-transform duration-150"
-              style={{
+            <TransitionCoverFrame
+              current={album}
+              outgoing={outgoingAlbum}
+              style={transitionStyle}
+              transitionKey={transitionIndex}
+              sizeClass="w-72 h-72 sm:w-80 sm:h-80 lg:w-[348px] lg:h-[348px]"
+              frameClass="rounded-2xl border-2"
+              frameStyle={{
                 borderColor: `rgba(${r},${g},${b},0.65)`,
-                transform: `scale(${1 + level * 0.022})`,
                 boxShadow: `0 30px 90px rgba(0,0,0,0.92), 0 0 ${
                   48 + level * 60
                 }px rgba(${r},${g},${b},${0.36 + level * 0.28})`,
               }}
-            >
-              <CoverImage album={album} size={640} eager className="w-full h-full" />
-            </div>
+              accentRgb={accentRgb}
+            />
           </div>
 
           {/* Music-TV Style Lower-Third Card */}

@@ -17,6 +17,7 @@ import type {
   AppSettings,
   CatalogOverview,
   PartySceneMode,
+  PartyTransitionMode,
   PreviewMode,
   TrackOrder,
 } from "../types";
@@ -515,29 +516,60 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </label>
 
                   {draft.autoSurfPartyMode && (
-                    <div className="flex flex-wrap gap-1.5">
-                      {(
-                        [
-                          { id: "auto", label: "Auto-Cycle All" },
-                          { id: "spotlight", label: "Cinema Spotlight" },
-                          { id: "vinyl", label: "Vinyl Turntable" },
-                          { id: "mosaic", label: "Floating Mosaic" },
-                          { id: "coverflow", label: "Cover Flow Spin" },
-                          { id: "wall", label: "Wall Spotlight" },
-                        ] as { id: PartySceneMode; label: string }[]
-                      ).map((sc) => (
-                        <button
-                          key={sc.id}
-                          onClick={() => patch({ autoSurfSceneMode: sc.id })}
-                          className={`px-2.5 py-1 rounded-lg text-xs border cursor-pointer transition-colors ${
-                            draft.autoSurfSceneMode === sc.id
-                              ? "bg-emerald-500/20 border-emerald-400/50 text-emerald-200"
-                              : "bg-white/[0.04] border-white/[0.06] text-zinc-400 hover:text-white"
-                          }`}
-                        >
-                          {sc.label}
-                        </button>
-                      ))}
+                    <div className="space-y-2.5">
+                      <div className="flex flex-wrap gap-1.5">
+                        {(
+                          [
+                            { id: "auto", label: "Auto-Cycle All" },
+                            { id: "spotlight", label: "Cinema Spotlight" },
+                            { id: "vinyl", label: "Vinyl Turntable" },
+                            { id: "mosaic", label: "Floating Mosaic" },
+                            { id: "coverflow", label: "Cover Flow Spin" },
+                            { id: "wall", label: "Wall Spotlight" },
+                          ] as { id: PartySceneMode; label: string }[]
+                        ).map((sc) => (
+                          <button
+                            key={sc.id}
+                            onClick={() => patch({ autoSurfSceneMode: sc.id })}
+                            className={`px-2.5 py-1 rounded-lg text-xs border cursor-pointer transition-colors ${
+                              draft.autoSurfSceneMode === sc.id
+                                ? "bg-emerald-500/20 border-emerald-400/50 text-emerald-200"
+                                : "bg-white/[0.04] border-white/[0.06] text-zinc-400 hover:text-white"
+                            }`}
+                          >
+                            {sc.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <div className="text-[11px] text-zinc-400">
+                          Album Transition Style
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {(
+                            [
+                              { id: "auto", label: "Auto-Mix All" },
+                              { id: "flip", label: "3D Card Flip" },
+                              { id: "toss", label: "Crate Toss" },
+                              { id: "wipe", label: "Shutter Wipe" },
+                              { id: "zoom", label: "Color Wash" },
+                            ] as { id: PartyTransitionMode; label: string }[]
+                          ).map((tr) => (
+                            <button
+                              key={tr.id}
+                              onClick={() => patch({ autoSurfTransition: tr.id })}
+                              className={`px-2.5 py-1 rounded-lg text-xs border cursor-pointer transition-colors ${
+                                draft.autoSurfTransition === tr.id
+                                  ? "bg-amber-400/20 border-amber-400/50 text-amber-100"
+                                  : "bg-white/[0.04] border-white/[0.06] text-zinc-400 hover:text-white"
+                              }`}
+                            >
+                              {tr.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
