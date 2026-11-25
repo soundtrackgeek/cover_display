@@ -12,6 +12,8 @@ import {
   Search,
   Settings,
   Shuffle,
+  SkipForward,
+  Sparkles,
   X,
 } from "lucide-react";
 import { api } from "./api";
@@ -19,6 +21,7 @@ import { CoverFlowView } from "./components/CoverFlowView";
 import { CoverWallView } from "./components/CoverWallView";
 import { CrateDrawer } from "./components/CrateDrawer";
 import { FilterBar } from "./components/FilterBar";
+import { PartyStageView } from "./components/PartyStageView";
 import { PlayerBar } from "./components/PlayerBar";
 import { SettingsModal } from "./components/SettingsModal";
 import { useAlbumWindow } from "./hooks/useAlbumWindow";
@@ -28,10 +31,23 @@ import type {
   AlbumSummary,
   AppSettings,
   CatalogOverview,
+  PartyScene,
+  PartySceneMode,
   PlaybackState,
   ViewMode,
 } from "./types";
 import { DEFAULT_FILTER } from "./types";
+
+const PARTY_SCENES: PartyScene[] = ["spotlight", "vinyl", "mosaic", "coverflow", "wall"];
+
+const PARTY_SCENE_LABELS: Record<PartySceneMode, string> = {
+  auto: "Auto",
+  spotlight: "Spotlight",
+  vinyl: "Vinyl",
+  mosaic: "Mosaic",
+  coverflow: "Flow",
+  wall: "Wall",
+};
 
 const INITIAL_SETTINGS: AppSettings = {
   libraryDir: "",
@@ -52,6 +68,8 @@ const INITIAL_SETTINGS: AppSettings = {
   autoPlayOnSelect: true,
   autoSurfTracksPerAlbum: 1,
   autoSurfOrder: "sequential",
+  autoSurfPartyMode: true,
+  autoSurfSceneMode: "auto",
   autoInstallUpdates: true,
   savedFilters: [],
   crateAlbumIds: [],
@@ -113,6 +131,8 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [crateOpen, setCrateOpen] = useState(false);
   const [autoSurf, setAutoSurf] = useState(false);
+  const [partySceneIdx, setPartySceneIdx] = useState(0);
+  const [albumTransitionIdx, setAlbumTransitionIdx] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
 
   const searchRef = useRef<HTMLInputElement>(null);
@@ -300,6 +320,8 @@ export function App() {
       ensureRange(nextIdx - 24, nextIdx + 24);
       setSelectedIndex(nextIdx);
       setWallScrollNonce((n) => n + 1);
+      setAlbumTransitionIdx((n) => n + 1);
+      setPartySceneIdx((n) => (n + 1) % PARTY_SCENES.length);
     });
     return () => {
       void unlistenPlayback.then((fn) => fn());
@@ -308,9 +330,16 @@ export function App() {
     };
   }, [ensureRange]);
 
-  // When Auto-Surf is active in Cover Wall, auto-play the newly focused album
+  const partyActive = autoSurf && settings.autoSurfPartyMode;
+  const activePartyScene: PartyScene =
+    settings.autoSurfSceneMode === "auto"
+      ? PARTY_SCENES[partySceneIdx % PARTY_SCENES.length]
+      : settings.autoSurfSceneMode;
+  const effectiveStage: PartyScene = partyActive ? activePartyScene : view;
+
+  // When Auto-Surf is active outside Cover Flow (Wall or Party Stage), auto-play the focused album
   useEffect(() => {
-    if (!autoSurf || view !== "wall") return;
+    if (!autoSurf || effectiveStage === "coverflow") return;
     const { album } = getAlbum(selectedIndex);
     if (!album) return;
     if (playback.albumId === album.id && playback.status === "playing") return;
@@ -318,12 +347,12 @@ export function App() {
       void api.previewAlbum(album.id, {
         startTrackIndex: 0,
         isPinned: false,
-        sourceView: "wall",
+        sourceView: effectiveStage === "wall" ? "wall" : "coverflow",
       });
-    }, 280);
+    }, 260);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoSurf, view, selectedIndex, getAlbum]);
+  }, [autoSurf, effectiveStage, selectedIndex, getAlbum]);
 
   // Debounce search text into filter (coalescing consecutive typing into a single history step)
   useEffect(() => {
@@ -377,9 +406,9 @@ export function App() {
 
   // Update adaptive ambient accent color for the centered/active album
   const activeAccentAlbumId =
-    view === "coverflow"
-      ? getAlbum(selectedIndex).album?.id ?? playback.albumId
-      : playback.albumId;
+    effectiveStage === "wall"
+      ? playback.albumId ?? getAlbum(selectedIndex).album?.id ?? null
+      : getAlbum(selectedIndex).album?.id ?? playback.albumId;
 
   useEffect(() => {
     if (!activeAccentAlbumId) return;
@@ -459,8 +488,9 @@ export function App() {
       if (next) {
         const n = settings.autoSurfTracksPerAlbum;
         const modeLabel = settings.autoSurfOrder === "random" ? "random" : "next";
+        const partyLabel = settings.autoSurfPartyMode ? " · Party Views" : "";
         showToast(
-          `Auto-Surf ON · ${n} ${n === 1 ? "track" : "tracks"}/album (${modeLabel})`
+          `Auto-Surf ON · ${n} ${n === 1 ? "track" : "tracks"}/album (${modeLabel})${partyLabel}`
         );
         if (playback.status !== "playing") {
           const target = getAlbum(selectedIndexRef.current).album;
@@ -480,10 +510,69 @@ export function App() {
   }, [
     settings.autoSurfTracksPerAlbum,
     settings.autoSurfOrder,
+    settings.autoSurfPartyMode,
     playback.status,
     getAlbum,
     showToast,
   ]);
+
+  const handleStepPartyAlbum = useCallback(
+    (delta: number, respectRandom = false) => {
+      if (totalCount <= 1) return;
+      let nextIdx: number;
+      if (respectRandom && settings.autoSurfOrder === "random") {
+        nextIdx = Math.floor(Math.random() * totalCount);
+        if (nextIdx === selectedIndexRef.current) {
+          nextIdx = (nextIdx + 1) % totalCount;
+        }
+      } else {
+        nextIdx = (selectedIndexRef.current + delta + totalCount) % totalCount;
+      }
+      ensureRange(nextIdx - 24, nextIdx + 24);
+      setSelectedIndex(nextIdx);
+      setWallScrollNonce((n) => n + 1);
+      setAlbumTransitionIdx((n) => n + 1);
+      if (settings.autoSurfPartyMode && settings.autoSurfSceneMode === "auto") {
+        setPartySceneIdx((n) => (n + 1) % PARTY_SCENES.length);
+      }
+    },
+    [
+      totalCount,
+      settings.autoSurfOrder,
+      settings.autoSurfPartyMode,
+      settings.autoSurfSceneMode,
+      ensureRange,
+    ]
+  );
+
+  const handleCyclePartyScene = useCallback(() => {
+    if (!autoSurf) return;
+    if (!settings.autoSurfPartyMode) {
+      setSettings((prev) => {
+        const next = { ...prev, autoSurfPartyMode: true };
+        void api.updateSettings(next);
+        return next;
+      });
+      showToast("Party Views ON");
+      return;
+    }
+    if (settings.autoSurfSceneMode === "auto") {
+      setPartySceneIdx((prev) => {
+        const nextIdx = (prev + 1) % PARTY_SCENES.length;
+        showToast(`Party Scene: ${PARTY_SCENE_LABELS[PARTY_SCENES[nextIdx]]}`);
+        return nextIdx;
+      });
+    } else {
+      const curIdx = PARTY_SCENES.indexOf(settings.autoSurfSceneMode);
+      const nextScene = PARTY_SCENES[(curIdx + 1) % PARTY_SCENES.length];
+      setSettings((prev) => {
+        const next = { ...prev, autoSurfSceneMode: nextScene };
+        void api.updateSettings(next);
+        return next;
+      });
+      showToast(`Party Scene: ${PARTY_SCENE_LABELS[nextScene]}`);
+    }
+  }, [autoSurf, settings.autoSurfPartyMode, settings.autoSurfSceneMode, showToast]);
 
   const handleSwitchView = useCallback(
     (nextView: ViewMode) => {
@@ -546,9 +635,12 @@ export function App() {
       } else if (e.key === "s" || e.key === "S") {
         e.preventDefault();
         handleToggleAutoSurf();
+      } else if ((e.key === "v" || e.key === "V") && autoSurfRef.current) {
+        e.preventDefault();
+        handleCyclePartyScene();
       } else if (e.key === "b" || e.key === "B") {
         const targetId =
-          view === "coverflow"
+          effectiveStage !== "wall"
             ? getAlbum(selectedIndex).album?.id ?? playback.albumId
             : playback.albumId;
         if (targetId) {
@@ -577,12 +669,13 @@ export function App() {
   }, [
     totalCount,
     ensureRange,
-    view,
+    effectiveStage,
     getAlbum,
     selectedIndex,
     playback.albumId,
     handleToggleCrate,
     handleToggleAutoSurf,
+    handleCyclePartyScene,
     handleHistoryBack,
     handleHistoryForward,
     handleSwitchView,
@@ -874,8 +967,73 @@ export function App() {
         crateCount={settings.crateAlbumIds.length}
       />
 
-      {/* Main Content Stage: Cover Flow OR Cover Wall */}
+      {/* Main Content Stage: Cover Flow, Cover Wall, or Auto-Surf Party Scenes */}
       <main className="relative flex-1 flex flex-col overflow-hidden">
+        {/* Floating Auto-Surf Party Scene HUD */}
+        {autoSurf && totalCount > 0 && (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 px-2.5 py-1.5 rounded-full glass-panel shadow-2xl border border-emerald-400/25">
+            <button
+              onClick={() =>
+                handleQuickUpdateSettings({
+                  autoSurfPartyMode: !settings.autoSurfPartyMode,
+                })
+              }
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-all cursor-pointer ${
+                settings.autoSurfPartyMode
+                  ? "bg-emerald-500/20 text-emerald-200 border border-emerald-400/40"
+                  : "bg-white/[0.05] text-zinc-400 hover:text-white border border-white/10"
+              }`}
+              title="Toggle Rotating Party Views during Auto-Surf"
+            >
+              <Sparkles className="w-3 h-3 text-emerald-300" />
+              Party
+            </button>
+
+            {settings.autoSurfPartyMode && (
+              <div className="flex items-center gap-0.5 pl-1 border-l border-white/10">
+                {(
+                  ["auto", "spotlight", "vinyl", "mosaic", "coverflow", "wall"] as PartySceneMode[]
+                ).map((mode) => {
+                  const selected = settings.autoSurfSceneMode === mode;
+                  const isLiveScene =
+                    settings.autoSurfSceneMode === "auto" && activePartyScene === mode;
+                  return (
+                    <button
+                      key={mode}
+                      onClick={() =>
+                        handleQuickUpdateSettings({ autoSurfSceneMode: mode })
+                      }
+                      className={`relative px-2 py-0.5 rounded-full text-[11px] transition-all cursor-pointer ${
+                        selected
+                          ? "bg-white text-zinc-950 font-semibold shadow-sm"
+                          : isLiveScene
+                          ? "bg-emerald-500/20 text-emerald-200 font-medium"
+                          : "text-zinc-400 hover:text-white hover:bg-white/[0.06]"
+                      }`}
+                      title={
+                        mode === "auto"
+                          ? "Auto-cycle all 5 Party Views on every album change (V to skip scene)"
+                          : `Lock Party View to ${PARTY_SCENE_LABELS[mode]}`
+                      }
+                    >
+                      {PARTY_SCENE_LABELS[mode]}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            <button
+              onClick={() => handleStepPartyAlbum(1, true)}
+              disabled={totalCount <= 1}
+              className="ml-0.5 p-1.5 rounded-full bg-white/[0.06] hover:bg-white/[0.15] text-zinc-200 hover:text-white transition-colors cursor-pointer disabled:opacity-30"
+              title="Skip to next Auto-Surf album"
+            >
+              <SkipForward className="w-3 h-3" />
+            </button>
+          </div>
+        )}
+
         {overview && overview.status.totalAlbums === 0 && overview.status.libraryExists ? (
           <div className="flex-1 flex flex-col items-center justify-center gap-3 text-zinc-400">
             <Disc3 className="w-10 h-10 text-amber-400 animate-spin" />
@@ -886,44 +1044,70 @@ export function App() {
               Reading albums and cover art index
             </div>
           </div>
-        ) : view === "coverflow" ? (
-          <CoverFlowView
-            queryId={queryId}
+        ) : effectiveStage === "spotlight" ||
+          effectiveStage === "vinyl" ||
+          effectiveStage === "mosaic" ? (
+          <PartyStageView
+            scene={effectiveStage}
+            transitionIndex={albumTransitionIdx}
             totalCount={totalCount}
+            selectedIndex={selectedIndex}
             getAlbum={getAlbum}
             ensureRange={ensureRange}
-            selectedIndex={selectedIndex}
-            onSelectIndex={setSelectedIndex}
-            settings={settings}
             playback={playback}
             accentRgb={accentRgb}
-            onFilterArtist={handleFilterArtist}
-            onFindSimilar={handleFindSimilar}
             crateSet={crateSet}
             onToggleCrate={handleToggleCrate}
+            onFilterArtist={handleFilterArtist}
+            onFindSimilar={handleFindSimilar}
             onOpenFolder={handleOpenFolder}
+            onStepAlbum={(delta) => handleStepPartyAlbum(delta, false)}
           />
+        ) : effectiveStage === "coverflow" ? (
+          <div key={partyActive ? "party-flow" : "std-flow"} className={`${partyActive ? "party-scene-enter" : ""} flex-1 flex flex-col overflow-hidden`}>
+            <CoverFlowView
+              queryId={queryId}
+              totalCount={totalCount}
+              getAlbum={getAlbum}
+              ensureRange={ensureRange}
+              selectedIndex={selectedIndex}
+              onSelectIndex={setSelectedIndex}
+              settings={settings}
+              playback={playback}
+              accentRgb={accentRgb}
+              onFilterArtist={handleFilterArtist}
+              onFindSimilar={handleFindSimilar}
+              crateSet={crateSet}
+              onToggleCrate={handleToggleCrate}
+              onOpenFolder={handleOpenFolder}
+              partySpin={partyActive}
+            />
+          </div>
         ) : (
-          <CoverWallView
-            queryId={queryId}
-            totalCount={totalCount}
-            getAlbum={getAlbum}
-            ensureRange={ensureRange}
-            selectedIndex={selectedIndex}
-            onSelectIndex={setSelectedIndex}
-            scrollSyncNonce={wallScrollNonce}
-            settings={settings}
-            onUpdateTileSize={(wallTileSize) =>
-              handleQuickUpdateSettings({ wallTileSize })
-            }
-            playback={playback}
-            onFilterArtist={handleFilterArtist}
-            onFindSimilar={handleFindSimilar}
-            onOpenInCoverFlow={handleOpenInCoverFlow}
-            crateSet={crateSet}
-            onToggleCrate={handleToggleCrate}
-            onOpenFolder={handleOpenFolder}
-          />
+          <div key={partyActive ? "party-wall" : "std-wall"} className={`${partyActive ? "party-scene-enter" : ""} flex-1 flex flex-col overflow-hidden`}>
+            <CoverWallView
+              queryId={queryId}
+              totalCount={totalCount}
+              getAlbum={getAlbum}
+              ensureRange={ensureRange}
+              selectedIndex={selectedIndex}
+              onSelectIndex={setSelectedIndex}
+              scrollSyncNonce={wallScrollNonce}
+              settings={settings}
+              onUpdateTileSize={(wallTileSize) =>
+                handleQuickUpdateSettings({ wallTileSize })
+              }
+              playback={playback}
+              onFilterArtist={handleFilterArtist}
+              onFindSimilar={handleFindSimilar}
+              onOpenInCoverFlow={handleOpenInCoverFlow}
+              crateSet={crateSet}
+              onToggleCrate={handleToggleCrate}
+              onOpenFolder={handleOpenFolder}
+              partySpotlight={partyActive}
+              accentRgb={accentRgb}
+            />
+          </div>
         )}
       </main>
 

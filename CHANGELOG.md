@@ -5,6 +5,17 @@ All notable changes to Cover Display will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-11-25
+
+### Added
+- **Auto-Surf Rotating Party Views**: Auto-Surf now cycles through 5 animated visual scenes on every album change (or lets you lock your favorite scene via the floating Party HUD or **Settings → Preview & Audio**):
+  - **Cinema Spotlight**: Full-bleed blurred Ken Burns album backdrop, beat-reactive `accentRgb` ambient aurora, alternating cover entrance animations (pop, 3D flip, glide), oversized studio typography, and live EQ/progress card.
+  - **Vinyl Turntable**: 12" matte LP jacket with a spinning vinyl record sliding out from the sleeve, complete with grooves, specular sheen, and a custom album-art center label.
+  - **Floating Parallax Mosaic**: Neighboring albums drift in soft-focused parallax depth layers behind the spotlighted active album and a Music-TV lower-third card.
+  - **Cover Flow Spin**: Dramatic high-speed slot-machine carousel spin when jumping across distant albums in Cover Flow.
+  - **Cover Wall Spotlight**: Smooth-scrolls to the active tile on the wall, dims surrounding covers, and lifts the playing album with a vibrant `accentRgb` glow.
+- **Floating Party Scene HUD & Shortcut**: Quickly toggle Party Views on/off, pick or lock any scene (`Auto`, `Spotlight`, `Vinyl`, `Mosaic`, `Flow`, `Wall`), skip to the next album, or press `V` to cycle scenes on the fly.
+
 ## [0.5.0] - 2026-11-25
 
 ### Added

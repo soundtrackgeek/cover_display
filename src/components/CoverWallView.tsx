@@ -30,6 +30,8 @@ interface CoverWallViewProps {
   crateSet: Set<string>;
   onToggleCrate: (albumId: string) => void;
   onOpenFolder: (albumId: string) => void;
+  partySpotlight?: boolean;
+  accentRgb?: [number, number, number];
 }
 
 const OVERSCAN_ROWS = 3;
@@ -51,6 +53,8 @@ export const CoverWallView: React.FC<CoverWallViewProps> = ({
   crateSet,
   onToggleCrate,
   onOpenFolder,
+  partySpotlight = false,
+  accentRgb = [217, 138, 46],
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const railRef = useRef<HTMLDivElement>(null);
@@ -140,7 +144,11 @@ export const CoverWallView: React.FC<CoverWallViewProps> = ({
       clampedIdx === 0
         ? 0
         : Math.max(0, Math.min(maxScroll, targetRow * rowHeight - viewport.height * 0.3));
-    scrollRef.current.scrollTop = targetTop;
+    if (partySpotlight && Math.abs(scrollRef.current.scrollTop - targetTop) < viewport.height * 4) {
+      scrollRef.current.scrollTo({ top: targetTop, behavior: "smooth" });
+    } else {
+      scrollRef.current.scrollTop = targetTop;
+    }
     setScrollTop(targetTop);
   }, [
     queryId,
@@ -152,6 +160,7 @@ export const CoverWallView: React.FC<CoverWallViewProps> = ({
     rowHeight,
     maxScroll,
     totalCount,
+    partySpotlight,
   ]);
 
   const startRow = Math.max(0, Math.floor(scrollTop / rowHeight) - OVERSCAN_ROWS);
@@ -308,7 +317,7 @@ export const CoverWallView: React.FC<CoverWallViewProps> = ({
         onScroll={(e) => {
           const nextTop = e.currentTarget.scrollTop;
           setScrollTop(nextTop);
-          if (!isScrubbing && totalCount > 0) {
+          if (!isScrubbing && !partySpotlight && totalCount > 0) {
             const leadRow = Math.max(0, Math.floor((nextTop + viewport.height * 0.25) / rowHeight));
             const leadIdx = Math.min(totalCount - 1, leadRow * cols);
             onSelectIndex(leadIdx);
@@ -366,9 +375,21 @@ export const CoverWallView: React.FC<CoverWallViewProps> = ({
                         onSelectIndex(idx);
                         handleTileClick(album);
                       }}
-                      style={{ width: tileSize, height: tileSize }}
-                      className={`group relative rounded-lg overflow-hidden cursor-pointer transition-all duration-200 will-change-transform ${
-                        isPlaying || isPinned
+                      style={{
+                        width: tileSize,
+                        height: tileSize,
+                        ...(partySpotlight && (isPlaying || isSelected)
+                          ? {
+                              boxShadow: `0 18px 50px rgba(0,0,0,0.85), 0 0 42px rgba(${accentRgb[0]},${accentRgb[1]},${accentRgb[2]},0.6)`,
+                            }
+                          : undefined),
+                      }}
+                      className={`group relative rounded-lg overflow-hidden cursor-pointer transition-all duration-300 will-change-transform ${
+                        partySpotlight && (isPlaying || isSelected)
+                          ? "z-30 scale-[1.11] ring-2 ring-white/90"
+                          : partySpotlight
+                          ? "opacity-35 hover:opacity-100 ring-1 ring-white/[0.06]"
+                          : isPlaying || isPinned
                           ? "z-20 scale-[1.045] ring-2 ring-amber-400 shadow-[0_14px_38px_rgba(251,191,36,0.28)]"
                           : isHovered
                           ? "z-10 scale-[1.03] ring-1 ring-white/35 shadow-[0_12px_30px_rgba(0,0,0,0.75)]"

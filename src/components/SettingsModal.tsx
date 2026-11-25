@@ -16,6 +16,7 @@ import type { UpdaterState } from "../hooks/useUpdater";
 import type {
   AppSettings,
   CatalogOverview,
+  PartySceneMode,
   PreviewMode,
   TrackOrder,
 } from "../types";
@@ -491,6 +492,54 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       </button>
                     ))}
                   </div>
+                </div>
+
+                <div className="sm:col-span-2 space-y-2.5 pt-1">
+                  <label className="flex items-center justify-between text-xs text-zinc-300 cursor-pointer">
+                    <span>
+                      <span className="font-medium text-zinc-200">
+                        Rotating Party Views
+                      </span>{" "}
+                      <span className="text-zinc-500">
+                        — Cycle Spotlight, Vinyl, Mosaic, Cover Flow &amp; Wall during Auto-Surf
+                      </span>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={draft.autoSurfPartyMode}
+                      onChange={(e) =>
+                        patch({ autoSurfPartyMode: e.target.checked })
+                      }
+                      className="accent-emerald-400"
+                    />
+                  </label>
+
+                  {draft.autoSurfPartyMode && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {(
+                        [
+                          { id: "auto", label: "Auto-Cycle All" },
+                          { id: "spotlight", label: "Cinema Spotlight" },
+                          { id: "vinyl", label: "Vinyl Turntable" },
+                          { id: "mosaic", label: "Floating Mosaic" },
+                          { id: "coverflow", label: "Cover Flow Spin" },
+                          { id: "wall", label: "Wall Spotlight" },
+                        ] as { id: PartySceneMode; label: string }[]
+                      ).map((sc) => (
+                        <button
+                          key={sc.id}
+                          onClick={() => patch({ autoSurfSceneMode: sc.id })}
+                          className={`px-2.5 py-1 rounded-lg text-xs border cursor-pointer transition-colors ${
+                            draft.autoSurfSceneMode === sc.id
+                              ? "bg-emerald-500/20 border-emerald-400/50 text-emerald-200"
+                              : "bg-white/[0.04] border-white/[0.06] text-zinc-400 hover:text-white"
+                          }`}
+                        >
+                          {sc.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </>

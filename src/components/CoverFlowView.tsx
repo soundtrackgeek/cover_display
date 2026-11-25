@@ -35,6 +35,7 @@ interface CoverFlowViewProps {
   crateSet: Set<string>;
   onToggleCrate: (albumId: string) => void;
   onOpenFolder: (albumId: string) => void;
+  partySpin?: boolean;
 }
 
 const VISIBLE_SIDE = 8;
@@ -54,6 +55,7 @@ export const CoverFlowView: React.FC<CoverFlowViewProps> = ({
   crateSet,
   onToggleCrate,
   onOpenFolder,
+  partySpin = false,
 }) => {
   // Smooth continuous float position for silky 60fps Cover Flow physics
   const posRef = useRef<number>(selectedIndex);
@@ -78,13 +80,22 @@ export const CoverFlowView: React.FC<CoverFlowViewProps> = ({
     lastReportedIdxRef.current = clamped;
     velRef.current = 0;
     if (Math.abs(posRef.current - clamped) > 40) {
-      posRef.current = clamped;
-      targetRef.current = null;
-      setRenderPos(clamped);
+      if (partySpin && totalCount > 6) {
+        // Dramatic slot-machine spin into the new album during Auto-Surf Party Mode
+        const dir = clamped >= posRef.current ? -1 : 1;
+        const spinStart = Math.max(0, Math.min(totalCount - 1, clamped + dir * 14));
+        posRef.current = spinStart;
+        targetRef.current = clamped;
+        setRenderPos(spinStart);
+      } else {
+        posRef.current = clamped;
+        targetRef.current = null;
+        setRenderPos(clamped);
+      }
     } else {
       targetRef.current = clamped;
     }
-  }, [selectedIndex, totalCount]);
+  }, [selectedIndex, totalCount, partySpin]);
 
   // Reset physics on query change
   useEffect(() => {

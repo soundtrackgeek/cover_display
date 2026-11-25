@@ -10,6 +10,10 @@ export type TrackOrder = "sequential" | "loved_first" | "rated_first" | "shuffle
 
 export type ViewMode = "coverflow" | "wall";
 
+export type PartyScene = "spotlight" | "vinyl" | "mosaic" | "coverflow" | "wall";
+
+export type PartySceneMode = "auto" | PartyScene;
+
 export interface AlbumFilter {
   search: string;
   genres: string[];
@@ -51,6 +55,8 @@ export interface AppSettings {
   autoPlayOnSelect: boolean;
   autoSurfTracksPerAlbum: number;
   autoSurfOrder: "sequential" | "random";
+  autoSurfPartyMode: boolean;
+  autoSurfSceneMode: PartySceneMode;
   autoInstallUpdates: boolean;
   savedFilters: SavedFilterPreset[];
   crateAlbumIds: string[];
