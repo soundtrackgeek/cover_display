@@ -10,10 +10,11 @@ A fast, studio-grade desktop music library cover browser and audio preview playe
   - Ultra-fast scrubbing rail with live Artist / Album / Year HUD tooltips to leap across 74,000+ albums instantaneously.
   - Automatic sequential track previews (configurable 15s default clips) with smooth cosine fade-in/out and inline clickable tracklist.
 - **Endless Virtualized Cover Wall**
-  - High-density row-virtualized album cover wall with adjustable tile size slider.
+  - High-density row-virtualized album cover wall with adjustable tile size slider and a **vertical fast-scrubbing rail** with live Artist / Album / Year HUD tooltips to leap across 74,000+ covers instantaneously.
+  - **Seamless View Sync**: Switching between Cover Flow (`1`) and Cover Wall (`2`) or pressing `R` ("Surprise Me") preserves and scrolls straight to your active album.
   - **Mouse Hover Preview**: Hover over any cover to smoothly preview clips of each track on the album with live equalizer meters.
   - Click any cover to **Pin/Lock** playback while navigating or scrubbing the waveform (`Esc` to unpin).
-  - Quick hover actions for Artist Discography, Similar Vibe, and jumping straight to Cover Flow.
+  - Quick hover actions for Discovery Crate, Open Folder, Artist Discography, Similar Vibe, and jumping straight to Cover Flow.
 - **Smart Highlight & Configurable Preview Engine**
   - Native Rust (`rodio` + `symphonia`) audio engine with zero browser autoplay restrictions, ReplayGain-style loudness normalization, and smooth fade-in/out.
   - **Smart Highlight (BLISS Timelines + CLAP)**: Combines 1-second chroma/MFCC chorus-repetition detection and loudness peaks from `music-timelines.sqlite3` with representative windows from `music-clap.sqlite3` to jump straight to each song's strongest section.
@@ -26,7 +27,8 @@ A fast, studio-grade desktop music library cover browser and audio preview playe
   - Filter Cover Flow or Cover Wall down to your Crate in one click, **Open Album Folder** in Explorer, or export your entire Crate as a `.m3u8` playlist for your main music player.
 - **Sonic Similarity ("Similar Vibe")**
   - Uses `music-analysis.sqlite3` (23-dimensional BLISS sonic descriptors) to build a compact cached album centroid index and find sonically similar albums across the entire library in milliseconds.
-- **Fast Faceted Filtering & Saved Presets**
+- **Fast Faceted Filtering, Navigation History & Saved Presets**
+  - Browser-style **Back / Forward navigation history** (`Alt+←` / `Alt+→`, mouse Back/Forward buttons, and top-bar arrows) that remembers your exact filter, view, and album position so you can dive down Artist and Similar Vibe rabbit holes fearlessly.
   - Instant search across Artist, Album, Genre, Year, and Label (`/`).
   - Filter by Genre (multi-select with counts), Decade / Year Range, Artist Discography, Chart Appearances (Billboard, UK Official, VG-lista), Minimum Rating, Loved Tracks, and Cover Availability.
   - Starter discovery chips (`80s Synthpop`, `70s Metal & Hard Rock`, `Synthwave`, `Charted Hits`, `Top Rated`, `Loved`, `Soundtracks`) plus custom saved filter presets.
@@ -57,7 +59,8 @@ All databases are opened strictly **read-only** (`SQLITE_OPEN_READ_ONLY` + `PRAG
 | `Home` / `End` | First / last album in Cover Flow |
 | `↑` / `↓` | Previous / next track on active album |
 | `Space` | Play / Pause preview |
-| `1` / `2` | Switch between Cover Flow and Cover Wall |
+| `1` / `2` | Switch between Cover Flow and Cover Wall (preserves active album) |
+| `Alt+←` / `Alt+→` | Navigate Back / Forward through filter & browsing history (also Mouse Back/Forward) |
 | `/` | Focus search bar |
 | `R` | Jump to a random album |
 | `B` | Save / remove active album in Discovery Crate |

@@ -122,7 +122,7 @@ export const CoverFlowView: React.FC<CoverFlowViewProps> = ({
     if (totalCount > 0) {
       ensureRange(centerIdx - 24, centerIdx + 24);
     }
-  }, [centerIdx, totalCount, ensureRange]);
+  }, [queryId, centerIdx, totalCount, ensureRange]);
 
   // Main 60fps physics & momentum animation loop
   useEffect(() => {

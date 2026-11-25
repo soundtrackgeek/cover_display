@@ -10,7 +10,7 @@ import {
   User,
 } from "lucide-react";
 import { api } from "../api";
-import type { AlbumSummary, AppSettings, PlaybackState } from "../types";
+import type { AlbumSummary, AppSettings, PlaybackState, ScrubberMark } from "../types";
 import { CoverImage } from "./CoverImage";
 
 interface CoverWallViewProps {
@@ -18,6 +18,9 @@ interface CoverWallViewProps {
   totalCount: number;
   getAlbum: (idx: number) => { album: AlbumSummary | null; score: number };
   ensureRange: (start: number, end: number) => void;
+  selectedIndex: number;
+  onSelectIndex: (idx: number) => void;
+  scrollSyncNonce: number;
   settings: AppSettings;
   onUpdateTileSize: (size: number) => void;
   playback: PlaybackState;
@@ -36,6 +39,9 @@ export const CoverWallView: React.FC<CoverWallViewProps> = ({
   totalCount,
   getAlbum,
   ensureRange,
+  selectedIndex,
+  onSelectIndex,
+  scrollSyncNonce,
   settings,
   onUpdateTileSize,
   playback,
@@ -47,18 +53,24 @@ export const CoverWallView: React.FC<CoverWallViewProps> = ({
   onOpenFolder,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [viewport, setViewport] = useState({ width: 1200, height: 700 });
+  const railRef = useRef<HTMLDivElement>(null);
+  const [viewport, setViewport] = useState({ width: 1200, height: 700, ready: false });
   const [scrollTop, setScrollTop] = useState(0);
   const [hoveredAlbumId, setHoveredAlbumId] = useState<string | null>(null);
+  const [scrubberMarks, setScrubberMarks] = useState<ScrubberMark[]>([]);
+  const [isScrubbing, setIsScrubbing] = useState(false);
+  const [scrubHoverPct, setScrubHoverPct] = useState<number | null>(null);
   const hoverTimerRef = useRef<number | null>(null);
   const leaveTimerRef = useRef<number | null>(null);
+  const lastSyncNonceRef = useRef<number>(-1);
+  const lastQueryIdRef = useRef<number>(queryId);
 
   // Track viewport size cleanly with ResizeObserver
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     const update = () => {
-      setViewport({ width: el.clientWidth, height: el.clientHeight });
+      setViewport({ width: el.clientWidth, height: el.clientHeight, ready: true });
     };
     update();
     const ro = new ResizeObserver(update);
@@ -66,13 +78,20 @@ export const CoverWallView: React.FC<CoverWallViewProps> = ({
     return () => ro.disconnect();
   }, []);
 
-  // Scroll to top when filter changes
+  // Fetch scrubber marks for fast vertical jumping across large walls
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = 0;
-      setScrollTop(0);
+    if (totalCount === 0) {
+      setScrubberMarks([]);
+      return;
     }
-  }, [queryId]);
+    let active = true;
+    api.getScrubberMarks(Math.min(180, totalCount)).then((marks) => {
+      if (active) setScrubberMarks(marks);
+    });
+    return () => {
+      active = false;
+    };
+  }, [queryId, totalCount]);
 
   // Clean up timers on unmount
   useEffect(() => {
@@ -94,13 +113,46 @@ export const CoverWallView: React.FC<CoverWallViewProps> = ({
   }, [playback.isPinned]);
 
   const gap = settings.wallGap;
-  const paddingX = 16;
-  const usableWidth = Math.max(240, viewport.width - paddingX * 2);
+  const showScrubRail = totalCount > 40;
+  const paddingLeft = 16;
+  const paddingRight = showScrubRail ? 34 : 16;
+  const usableWidth = Math.max(240, viewport.width - paddingLeft - paddingRight);
   const cols = Math.max(2, Math.floor((usableWidth + gap) / (settings.wallTileSize + gap)));
   const tileSize = Math.floor((usableWidth - gap * (cols - 1)) / cols);
   const rowHeight = tileSize + gap;
   const totalRows = Math.ceil(totalCount / cols);
   const totalHeight = Math.max(0, totalRows * rowHeight + 24);
+  const maxScroll = Math.max(0, totalHeight - viewport.height);
+
+  // Sync scroll position on filter change, view switch from Cover Flow, Back/Forward, or Surprise Me (R)
+  useEffect(() => {
+    if (!viewport.ready || !scrollRef.current) return;
+    const queryChanged = lastQueryIdRef.current !== queryId;
+    const nonceChanged = lastSyncNonceRef.current !== scrollSyncNonce;
+    if (!queryChanged && !nonceChanged) return;
+
+    lastQueryIdRef.current = queryId;
+    lastSyncNonceRef.current = scrollSyncNonce;
+
+    const clampedIdx = Math.max(0, Math.min(Math.max(0, totalCount - 1), selectedIndex));
+    const targetRow = Math.floor(clampedIdx / cols);
+    const targetTop =
+      clampedIdx === 0
+        ? 0
+        : Math.max(0, Math.min(maxScroll, targetRow * rowHeight - viewport.height * 0.3));
+    scrollRef.current.scrollTop = targetTop;
+    setScrollTop(targetTop);
+  }, [
+    queryId,
+    scrollSyncNonce,
+    selectedIndex,
+    viewport.ready,
+    viewport.height,
+    cols,
+    rowHeight,
+    maxScroll,
+    totalCount,
+  ]);
 
   const startRow = Math.max(0, Math.floor(scrollTop / rowHeight) - OVERSCAN_ROWS);
   const endRow = Math.min(
@@ -114,7 +166,49 @@ export const CoverWallView: React.FC<CoverWallViewProps> = ({
     const firstIdx = startRow * cols;
     const lastIdx = Math.min(totalCount - 1, (endRow + 1) * cols - 1);
     ensureRange(firstIdx, lastIdx);
-  }, [startRow, endRow, cols, totalCount, ensureRange]);
+  }, [queryId, startRow, endRow, cols, totalCount, ensureRange]);
+
+  // Vertical fast-scrubbing rail logic
+  const scrubFromClientY = useCallback(
+    (clientY: number) => {
+      if (!railRef.current || !scrollRef.current || maxScroll <= 0) return;
+      const rect = railRef.current.getBoundingClientRect();
+      const pct = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height));
+      setScrubHoverPct(pct);
+      const nextTop = pct * maxScroll;
+      scrollRef.current.scrollTop = nextTop;
+      setScrollTop(nextTop);
+      const approxIdx = Math.min(
+        Math.max(0, totalCount - 1),
+        Math.round(pct * Math.max(0, totalCount - 1))
+      );
+      onSelectIndex(approxIdx);
+    },
+    [maxScroll, totalCount, onSelectIndex]
+  );
+
+  useEffect(() => {
+    if (!isScrubbing) return;
+    const onMove = (e: MouseEvent) => scrubFromClientY(e.clientY);
+    const onUp = () => {
+      setIsScrubbing(false);
+      setScrubHoverPct(null);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [isScrubbing, scrubFromClientY]);
+
+  const scrubTooltipMark = useMemo(() => {
+    if (scrubHoverPct == null || scrubberMarks.length === 0) return null;
+    const idx = Math.round(scrubHoverPct * (scrubberMarks.length - 1));
+    return scrubberMarks[Math.max(0, Math.min(scrubberMarks.length - 1, idx))];
+  }, [scrubHoverPct, scrubberMarks]);
+
+  const scrollPct = maxScroll > 0 ? Math.max(0, Math.min(1, scrollTop / maxScroll)) : 0;
 
   const handleTileEnter = useCallback(
     (album: AlbumSummary) => {
@@ -211,9 +305,17 @@ export const CoverWallView: React.FC<CoverWallViewProps> = ({
       {/* Virtualized Endless Cover Wall */}
       <div
         ref={scrollRef}
-        onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+        onScroll={(e) => {
+          const nextTop = e.currentTarget.scrollTop;
+          setScrollTop(nextTop);
+          if (!isScrubbing && totalCount > 0) {
+            const leadRow = Math.max(0, Math.floor((nextTop + viewport.height * 0.25) / rowHeight));
+            const leadIdx = Math.min(totalCount - 1, leadRow * cols);
+            onSelectIndex(leadIdx);
+          }
+        }}
         className="w-full h-full overflow-y-auto overflow-x-hidden"
-        style={{ paddingLeft: paddingX, paddingRight: paddingX, paddingTop: 12 }}
+        style={{ paddingLeft, paddingRight, paddingTop: 12 }}
       >
         <div className="relative w-full" style={{ height: totalHeight }}>
           {visibleRows.map((rowIdx) => {
@@ -250,19 +352,28 @@ export const CoverWallView: React.FC<CoverWallViewProps> = ({
                   const isPinned = playback.albumId === album.id && playback.isPinned;
                   const isHovered = hoveredAlbumId === album.id;
                   const isCrated = crateSet.has(album.id);
+                  const isSelected = idx === selectedIndex;
 
                   return (
                     <div
                       key={album.id}
-                      onMouseEnter={() => handleTileEnter(album)}
+                      onMouseEnter={() => {
+                        onSelectIndex(idx);
+                        handleTileEnter(album);
+                      }}
                       onMouseLeave={() => handleTileLeave(album.id)}
-                      onClick={() => handleTileClick(album)}
+                      onClick={() => {
+                        onSelectIndex(idx);
+                        handleTileClick(album);
+                      }}
                       style={{ width: tileSize, height: tileSize }}
                       className={`group relative rounded-lg overflow-hidden cursor-pointer transition-all duration-200 will-change-transform ${
                         isPlaying || isPinned
                           ? "z-20 scale-[1.045] ring-2 ring-amber-400 shadow-[0_14px_38px_rgba(251,191,36,0.28)]"
                           : isHovered
                           ? "z-10 scale-[1.03] ring-1 ring-white/35 shadow-[0_12px_30px_rgba(0,0,0,0.75)]"
+                          : isSelected
+                          ? "ring-2 ring-amber-400/55 shadow-[0_0_24px_rgba(251,191,36,0.18)]"
                           : "ring-1 ring-white/[0.06]"
                       }`}
                     >
@@ -402,8 +513,66 @@ export const CoverWallView: React.FC<CoverWallViewProps> = ({
         </div>
       </div>
 
+      {/* Fast-Scrubbing Vertical Rail with Live Artist / Album / Year HUD */}
+      {showScrubRail && maxScroll > 0 && (
+        <div
+          ref={railRef}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            setIsScrubbing(true);
+            scrubFromClientY(e.clientY);
+          }}
+          onMouseMove={(e) => {
+            if (!railRef.current) return;
+            const rect = railRef.current.getBoundingClientRect();
+            const pct = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+            setScrubHoverPct(pct);
+          }}
+          onMouseLeave={() => {
+            if (!isScrubbing) setScrubHoverPct(null);
+          }}
+          className="absolute right-1.5 top-3 bottom-16 z-30 w-5 flex justify-center cursor-ns-resize group select-none"
+          title="Drag or click to scrub across the entire Cover Wall"
+        >
+          {/* Floating HUD Tooltip */}
+          {scrubTooltipMark && scrubHoverPct != null && (
+            <div
+              className="pointer-events-none absolute right-7 -translate-y-1/2 px-3 py-1.5 rounded-xl glass-panel shadow-2xl whitespace-nowrap z-40 border border-white/15"
+              style={{
+                top: `${Math.max(8, Math.min(92, scrubHoverPct * 100))}%`,
+              }}
+            >
+              <div className="text-[11px] font-semibold text-white truncate max-w-[230px]">
+                {scrubTooltipMark.label}
+              </div>
+              <div className="text-[10px] text-zinc-400 truncate max-w-[230px]">
+                {scrubTooltipMark.sublabel}
+                {scrubTooltipMark.year ? ` (${scrubTooltipMark.year})` : ""}
+              </div>
+              <div className="text-[9px] font-mono text-amber-300/80 tabular-nums mt-0.5">
+                #{(scrubTooltipMark.index + 1).toLocaleString()} / {totalCount.toLocaleString()}
+              </div>
+            </div>
+          )}
+
+          {/* Vertical Track */}
+          <div className="relative h-full w-1.5 rounded-full bg-white/[0.08] group-hover:w-2 transition-all overflow-hidden">
+            <div
+              className="w-full rounded-full bg-gradient-to-b from-amber-500/80 to-amber-300"
+              style={{ height: `${scrollPct * 100}%` }}
+            />
+          </div>
+
+          {/* Scrub Thumb */}
+          <div
+            className="pointer-events-none absolute left-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white shadow-[0_0_10px_rgba(251,191,36,0.85)] ring-2 ring-amber-400/75 transition-transform group-hover:scale-125"
+            style={{ top: `${scrollPct * 100}%` }}
+          />
+        </div>
+      )}
+
       {/* Floating Wall Density & Navigation Controls */}
-      <div className="fixed right-5 bottom-[92px] z-30 flex items-center gap-2">
+      <div className="fixed right-8 bottom-[92px] z-30 flex items-center gap-2">
         {scrollTop > 400 && (
           <button
             onClick={() => scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" })}

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import {
   Bookmark,
+  ChevronLeft,
+  ChevronRight,
   Disc3,
   Download,
   Grid2x2,
@@ -78,6 +80,14 @@ const INITIAL_PLAYBACK: PlaybackState = {
   sourceView: "coverflow",
 };
 
+interface NavEntry {
+  filter: AlbumFilter;
+  selectedIndex: number;
+  view: ViewMode;
+}
+
+const MAX_HISTORY = 50;
+
 export function App() {
   const [view, setView] = useState<ViewMode>("coverflow");
   const [settings, setSettings] = useState<AppSettings>(INITIAL_SETTINGS);
@@ -93,6 +103,7 @@ export function App() {
   const [loadingSimilar, setLoadingSimilar] = useState(false);
 
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [wallScrollNonce, setWallScrollNonce] = useState(0);
   const [playback, setPlayback] = useState<PlaybackState>(INITIAL_PLAYBACK);
   const [accentRgb, setAccentRgb] = useState<[number, number, number]>([217, 138, 46]);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -101,6 +112,113 @@ export function App() {
 
   const searchRef = useRef<HTMLInputElement>(null);
   const toastTimerRef = useRef<number | null>(null);
+
+  // Browser-style navigation history stack (Back / Forward)
+  const historyRef = useRef<NavEntry[]>([
+    { filter: DEFAULT_FILTER, selectedIndex: 0, view: "coverflow" },
+  ]);
+  const historyIdxRef = useRef<number>(0);
+  const [, setHistoryTick] = useState(0);
+  const pendingRestoreIndexRef = useRef<number | null>(null);
+  const skipSearchDebounceRef = useRef<boolean>(false);
+  const selectedIndexRef = useRef<number>(0);
+  const viewRef = useRef<ViewMode>("coverflow");
+  selectedIndexRef.current = selectedIndex;
+  viewRef.current = view;
+
+  const canGoBack = historyIdxRef.current > 0;
+  const canGoForward = historyIdxRef.current < historyRef.current.length - 1;
+
+  const navigateToFilter = useCallback(
+    (
+      nextFilter: AlbumFilter,
+      opts?: { replace?: boolean; nextView?: ViewMode; syncSearch?: boolean }
+    ) => {
+      const stack = historyRef.current;
+      const curIdx = historyIdxRef.current;
+      if (stack[curIdx]) {
+        stack[curIdx] = {
+          ...stack[curIdx],
+          selectedIndex: selectedIndexRef.current,
+          view: viewRef.current,
+        };
+      }
+
+      const targetView = opts?.nextView ?? viewRef.current;
+      const newEntry: NavEntry = {
+        filter: nextFilter,
+        selectedIndex: 0,
+        view: targetView,
+      };
+
+      if (opts?.replace && curIdx >= 0) {
+        stack[curIdx] = newEntry;
+      } else {
+        const sliced = stack.slice(0, curIdx + 1);
+        sliced.push(newEntry);
+        if (sliced.length > MAX_HISTORY) {
+          sliced.shift();
+        }
+        historyRef.current = sliced;
+        historyIdxRef.current = sliced.length - 1;
+      }
+
+      setHistoryTick((t) => t + 1);
+      if (opts?.syncSearch) {
+        skipSearchDebounceRef.current = true;
+        setSearchInput(nextFilter.search);
+      }
+      if (opts?.nextView) {
+        setView(opts.nextView);
+      }
+      setFilter(nextFilter);
+    },
+    []
+  );
+
+  const handleHistoryBack = useCallback(() => {
+    const stack = historyRef.current;
+    const curIdx = historyIdxRef.current;
+    if (curIdx <= 0) return;
+
+    stack[curIdx] = {
+      ...stack[curIdx],
+      selectedIndex: selectedIndexRef.current,
+      view: viewRef.current,
+    };
+
+    const nextIdx = curIdx - 1;
+    historyIdxRef.current = nextIdx;
+    const target = stack[nextIdx];
+    pendingRestoreIndexRef.current = target.selectedIndex;
+    skipSearchDebounceRef.current = true;
+    setHistoryTick((t) => t + 1);
+    setView(target.view);
+    setSearchInput(target.filter.search);
+    setFilter({ ...target.filter });
+  }, []);
+
+  const handleHistoryForward = useCallback(() => {
+    const stack = historyRef.current;
+    const curIdx = historyIdxRef.current;
+    if (curIdx >= stack.length - 1) return;
+
+    stack[curIdx] = {
+      ...stack[curIdx],
+      selectedIndex: selectedIndexRef.current,
+      view: viewRef.current,
+    };
+
+    const nextIdx = curIdx + 1;
+    historyIdxRef.current = nextIdx;
+    const target = stack[nextIdx];
+    pendingRestoreIndexRef.current = target.selectedIndex;
+    skipSearchDebounceRef.current = true;
+    setHistoryTick((t) => t + 1);
+    setView(target.view);
+    setSearchInput(target.filter.search);
+    setFilter({ ...target.filter });
+  }, []);
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
@@ -156,15 +274,19 @@ export function App() {
     };
   }, []);
 
-  // Debounce search text into filter
+  // Debounce search text into filter (coalescing consecutive typing into a single history step)
   useEffect(() => {
+    if (skipSearchDebounceRef.current) {
+      skipSearchDebounceRef.current = false;
+      return;
+    }
     const timer = window.setTimeout(() => {
-      setFilter((cur) =>
-        cur.search === searchInput ? cur : { ...cur, search: searchInput }
-      );
+      if (filter.search === searchInput) return;
+      const replace = filter.search.trim() !== "" && searchInput.trim() !== "";
+      navigateToFilter({ ...filter, search: searchInput }, { replace });
     }, 140);
     return () => window.clearTimeout(timer);
-  }, [searchInput]);
+  }, [searchInput, filter, navigateToFilter]);
 
   // Execute Rust-side album filter & sort whenever filter changes
   useEffect(() => {
@@ -176,12 +298,21 @@ export function App() {
       .queryAlbums(filter)
       .then((res) => {
         if (!active) return;
+        const restore = pendingRestoreIndexRef.current;
+        pendingRestoreIndexRef.current = null;
+        const nextSelected =
+          restore != null
+            ? Math.max(0, Math.min(Math.max(0, res.totalCount - 1), restore))
+            : 0;
         setQueryId(res.queryId);
         setTotalCount(res.totalCount);
         setInitialItems(res.initialItems);
         setInitialScores(res.similarityScores);
         setSimilarSource(res.similarSource);
-        setSelectedIndex(0);
+        setSelectedIndex(nextSelected);
+        if (restore != null) {
+          setWallScrollNonce((n) => n + 1);
+        }
         setLoadingSimilar(false);
       })
       .catch((err) => {
@@ -261,17 +392,44 @@ export function App() {
   }, [showToast]);
 
   const handleBrowseCrate = useCallback(() => {
-    setSearchInput("");
-    setFilter({
-      ...DEFAULT_FILTER,
-      crateOnly: true,
-    });
+    navigateToFilter(
+      {
+        ...DEFAULT_FILTER,
+        crateOnly: true,
+      },
+      { syncSearch: true }
+    );
     setCrateOpen(false);
-  }, []);
+  }, [navigateToFilter]);
 
-  // Global keyboard shortcuts
+  const handleSwitchView = useCallback(
+    (nextView: ViewMode) => {
+      if (nextView === view) return;
+      if (nextView === "wall") {
+        if (!playback.isPinned) {
+          void api.stopPlayback(true);
+        }
+        setWallScrollNonce((n) => n + 1);
+      }
+      setView(nextView);
+    },
+    [view, playback.isPinned]
+  );
+
+  // Global keyboard shortcuts + mouse Back/Forward buttons
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (e.altKey && e.key === "ArrowLeft") {
+        e.preventDefault();
+        handleHistoryBack();
+        return;
+      }
+      if (e.altKey && e.key === "ArrowRight") {
+        e.preventDefault();
+        handleHistoryForward();
+        return;
+      }
+
       const tag = (e.target as HTMLElement | null)?.tagName;
       const inInput = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
 
@@ -294,13 +452,14 @@ export function App() {
         e.preventDefault();
         void api.prevTrack();
       } else if (e.key === "1") {
-        setView("coverflow");
+        handleSwitchView("coverflow");
       } else if (e.key === "2") {
-        setView("wall");
+        handleSwitchView("wall");
       } else if ((e.key === "r" || e.key === "R") && totalCount > 1) {
         const randIdx = Math.floor(Math.random() * totalCount);
         ensureRange(randIdx - 24, randIdx + 24);
         setSelectedIndex(randIdx);
+        setWallScrollNonce((n) => n + 1);
       } else if (e.key === "b" || e.key === "B") {
         const targetId =
           view === "coverflow"
@@ -312,8 +471,23 @@ export function App() {
         }
       }
     };
+
+    const onMouseUp = (e: MouseEvent) => {
+      if (e.button === 3) {
+        e.preventDefault();
+        handleHistoryBack();
+      } else if (e.button === 4) {
+        e.preventDefault();
+        handleHistoryForward();
+      }
+    };
+
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    window.addEventListener("mouseup", onMouseUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
   }, [
     totalCount,
     ensureRange,
@@ -322,6 +496,9 @@ export function App() {
     selectedIndex,
     playback.albumId,
     handleToggleCrate,
+    handleHistoryBack,
+    handleHistoryForward,
+    handleSwitchView,
   ]);
 
   const handleSaveSettings = useCallback(async (next: AppSettings) => {
@@ -349,22 +526,32 @@ export function App() {
     setFilter((f) => ({ ...f }));
   }, []);
 
-  const handleFilterArtist = useCallback((artist: string) => {
-    setSearchInput("");
-    setFilter({
-      ...DEFAULT_FILTER,
-      artist,
-      sortBy: "year_asc",
-    });
-  }, []);
+  const handleFilterArtist = useCallback(
+    (artist: string) => {
+      navigateToFilter(
+        {
+          ...DEFAULT_FILTER,
+          artist,
+          sortBy: "year_asc",
+        },
+        { syncSearch: true }
+      );
+    },
+    [navigateToFilter]
+  );
 
-  const handleFindSimilar = useCallback((albumId: string) => {
-    setSearchInput("");
-    setFilter({
-      ...DEFAULT_FILTER,
-      similarToAlbumId: albumId,
-    });
-  }, []);
+  const handleFindSimilar = useCallback(
+    (albumId: string) => {
+      navigateToFilter(
+        {
+          ...DEFAULT_FILTER,
+          similarToAlbumId: albumId,
+        },
+        { syncSearch: true }
+      );
+    },
+    [navigateToFilter]
+  );
 
   const handleSavePreset = useCallback(
     (name: string) => {
@@ -397,10 +584,8 @@ export function App() {
     }
     ensureRange(randIdx - 24, randIdx + 24);
     setSelectedIndex(randIdx);
-    if (view !== "coverflow") {
-      setView("coverflow");
-    }
-  }, [totalCount, selectedIndex, view, ensureRange]);
+    setWallScrollNonce((n) => n + 1);
+  }, [totalCount, selectedIndex, ensureRange]);
 
   const handleOpenInCoverFlow = useCallback((index: number) => {
     setSelectedIndex(index);
@@ -429,10 +614,30 @@ export function App() {
             </div>
           </div>
 
+          {/* Back / Forward Navigation History */}
+          <div className="flex items-center p-0.5 rounded-xl bg-white/[0.04] border border-white/[0.08]">
+            <button
+              onClick={handleHistoryBack}
+              disabled={!canGoBack}
+              className="p-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-white/[0.08] disabled:opacity-25 disabled:hover:bg-transparent transition-colors cursor-pointer"
+              title="Back (Alt+← or Mouse Back)"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={handleHistoryForward}
+              disabled={!canGoForward}
+              className="p-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-white/[0.08] disabled:opacity-25 disabled:hover:bg-transparent transition-colors cursor-pointer"
+              title="Forward (Alt+→ or Mouse Forward)"
+            >
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
           {/* Segmented View Toggle */}
           <div className="flex items-center p-1 rounded-xl bg-white/[0.05] border border-white/[0.08]">
             <button
-              onClick={() => setView("coverflow")}
+              onClick={() => handleSwitchView("coverflow")}
               className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
                 view === "coverflow"
                   ? "bg-white text-zinc-950 shadow-sm"
@@ -444,12 +649,7 @@ export function App() {
               Cover Flow
             </button>
             <button
-              onClick={() => {
-                setView("wall");
-                if (!playback.isPinned) {
-                  void api.stopPlayback(true);
-                }
-              }}
+              onClick={() => handleSwitchView("wall")}
               className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
                 view === "wall"
                   ? "bg-white text-zinc-950 shadow-sm"
@@ -558,8 +758,7 @@ export function App() {
       <FilterBar
         filter={filter}
         onChange={(next) => {
-          setFilter(next);
-          if (next.search !== searchInput) setSearchInput(next.search);
+          navigateToFilter(next, { syncSearch: next.search !== searchInput });
         }}
         genres={overview?.genres ?? []}
         savedPresets={settings.savedFilters}
@@ -605,6 +804,9 @@ export function App() {
             totalCount={totalCount}
             getAlbum={getAlbum}
             ensureRange={ensureRange}
+            selectedIndex={selectedIndex}
+            onSelectIndex={setSelectedIndex}
+            scrollSyncNonce={wallScrollNonce}
             settings={settings}
             onUpdateTileSize={(wallTileSize) =>
               handleQuickUpdateSettings({ wallTileSize })

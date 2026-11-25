@@ -5,6 +5,13 @@ All notable changes to Cover Display will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-11-25
+
+### Added
+- **Browser-Style Navigation History (Back / Forward)**: Added top-bar Back/Forward buttons, `Alt+←` / `Alt+→` shortcuts, and mouse Back/Forward side-button support that remember your exact filter, view mode, and album scroll position when diving into Artist discographies, Similar Vibe matches, Crate filters, or searches.
+- **Cover Wall Fast-Scrubbing Rail**: Added a vertical fast-scrubbing rail along the right edge of Cover Wall with live Artist / Album / Year + index HUD tooltips for instant leaping across 74,000+ albums.
+- **Seamless Cover Flow ↔ Cover Wall Sync**: Switching between Cover Flow (`1`) and Cover Wall (`2`) now preserves your active album position, and **Surprise Me** (`R`) now works directly inside Cover Wall without forcing a view switch.
+
 ## [0.3.0] - 2026-11-25
 
 ### Added
